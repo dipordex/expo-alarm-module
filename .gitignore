@@ -72,7 +72,7 @@ android/keystores/debug.keystore
 .expo/
 .expo/*
 
-!plugin/build
+# !plugin/build
 
 # Turborepo
 .turbo/
@@ -86,4 +86,4 @@ example/node_modules/
 example/android/
 
 #Plugin build
-plugin/build 
+# plugin/build 
