@@ -7,18 +7,20 @@ class Alarm: Codable {
     var snoozeEnabled: Bool
     var title: String
     var description: String
+    var sound: String = "bell"
     
     convenience init() {
         self.init(uid: "", date: Date(), active: true, snoozeEnabled: false, title: "Alarm", description: "")
     }
     
-    init(uid: String, date: Date, active: Bool, snoozeEnabled: Bool, title: String, description: String) {
+    init(uid: String, date: Date, active: Bool, snoozeEnabled: Bool, title: String, description: String, sound: String = "bell") {
         self.uid = uid
         self.date = date
         self.active = active
         self.snoozeEnabled = snoozeEnabled
         self.title = title
         self.description = description
+        self.sound = sound
     }
     
     init(dictionary: NSMutableDictionary) {
@@ -30,6 +32,7 @@ class Alarm: Codable {
         self.snoozeEnabled = dictionary["snoozeEnabled"] as? Bool ?? false
         self.title = dictionary["title"] as? String ?? ""
         self.description = dictionary["description"] as? String ?? ""
+        self.sound = dictionary["sound"] as? String ?? "bell"
         
         // Converts the Date
         if let dateString = dictionary["day"] as? String,
@@ -39,6 +42,14 @@ class Alarm: Codable {
             // Handle the case where the date conversion fails or provide a default value
             self.date = Date()
         }
+        
+        print("\u{1F4E5} Alarm initialized from dictionary:")
+               print("  • uid: \(uid)")
+               print("  • title: \(title)")
+               print("  • sound: \(sound)")
+               print("  • active: \(active)")
+               print("  • snoozeEnabled: \(snoozeEnabled)")
+               print("  • date: \(date)")
     }
     
     enum CodingKeys: CodingKey {
@@ -81,7 +92,8 @@ class Alarm: Codable {
             "active": alarm.active,
             "snoozeEnabled": alarm.snoozeEnabled,
             "title": alarm.title,
-            "description": alarm.description
+            "description": alarm.description,
+            "sound": alarm.sound
         ]
         
         return alarmDictionary;

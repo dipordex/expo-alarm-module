@@ -11,6 +11,7 @@ import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
 
@@ -22,7 +23,6 @@ import com.expoalarmmodule.receivers.NotificationActionReceiver;
 
 import java.util.Calendar;
 
-
 public class Helper {
 
     private static final String TAG = "AlarmHelper";
@@ -32,24 +32,9 @@ public class Helper {
         Intent intent = new Intent(context, AlarmReceiver.class);
         intent.putExtra("ALARM_UID", alarmUid);
 
-        PendingIntent pendingIntent = null;
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            pendingIntent = PendingIntent.getBroadcast(
-                context,
-                notificationID,
-                intent,
-                PendingIntent.FLAG_MUTABLE
-            );
-        }
-        else
-        {  
-            pendingIntent = PendingIntent.getBroadcast(
-                context,
-                notificationID,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT
-            );
-        }
+        PendingIntent pendingIntent = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                ? PendingIntent.getBroadcast(context, notificationID, intent, PendingIntent.FLAG_MUTABLE)
+                : PendingIntent.getBroadcast(context, notificationID, intent, PendingIntent.FLAG_UPDATE_CURRENT);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
@@ -58,49 +43,45 @@ public class Helper {
         } else {
             alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
         }
+
         Log.d(TAG, "SDK version: " + Build.VERSION.SDK_INT);
         Log.d(TAG, "scheduling alarm with notification id: " + notificationID);
-        Log.d(TAG, "alarm scheduled to fire in " + (((float)(triggerAtMillis - System.currentTimeMillis())) / (1000 * 60)) + "min");
+        Log.d(TAG, "alarm scheduled to fire in " + (((float) (triggerAtMillis - System.currentTimeMillis())) / (1000 * 60)) + "min");
     }
 
     static void cancelAlarm(Context context, int notificationID) {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         Intent intent = new Intent(context, AlarmReceiver.class);
-        PendingIntent pendingIntent = null;
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            pendingIntent = PendingIntent.getBroadcast(
-                context,
-                notificationID,
-                intent,
-                PendingIntent.FLAG_MUTABLE
-            );
-        }
-        else
-        {
-            
-            pendingIntent = PendingIntent.getBroadcast(
-                context,
-                notificationID,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT
-            );
-        }
+        PendingIntent pendingIntent = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                ? PendingIntent.getBroadcast(context, notificationID, intent, PendingIntent.FLAG_MUTABLE)
+                : PendingIntent.getBroadcast(context, notificationID, intent, PendingIntent.FLAG_UPDATE_CURRENT);
         alarmManager.cancel(pendingIntent);
         Log.d(TAG, "canceling alarm with notification id: " + notificationID);
     }
 
     static void sendNotification(Context context, Alarm alarm, int notificationID) {
         try {
-            Notification mBuilder = getAlarmNotification(context, alarm, notificationID);
-            NotificationManager mNotificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-            mNotificationManager.notify(notificationID, mBuilder);
+            Notification notification = getAlarmNotification(context, alarm, notificationID);
+            NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            notificationManager.notify(notificationID, notification);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
     static Notification getAlarmNotification(Context context, Alarm alarm, int notificationID) {
-        return getNotification(context, notificationID, alarm.uid, alarm.title, alarm.description, alarm.showDismiss, alarm.showSnooze, alarm.dismissText, alarm.snoozeText);
+        return getNotification(
+                context,
+                notificationID,
+                alarm.uid,
+                alarm.title,
+                alarm.description,
+                alarm.showDismiss,
+                alarm.showSnooze,
+                alarm.dismissText,
+                alarm.snoozeText,
+                alarm.sound // <-- support for sound
+        );
     }
 
     public static void cancelNotification(Context context, int notificationId) {
@@ -109,8 +90,6 @@ public class Helper {
     }
 
     static void createNotificationChannel(Context context) {
-        // Create the NotificationChannel, but only on API 26+ because
-        // the NotificationChannel class is new and not in the support library
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             String id = context.getResources().getString(R.string.notification_channel_id);
             String name = context.getResources().getString(R.string.notification_channel_name);
@@ -119,13 +98,9 @@ public class Helper {
             NotificationChannel channel = new NotificationChannel(id, name, importance);
             channel.setDescription(description);
             channel.enableLights(true);
-            // Sets the notification light color for notifications posted to this
-            // channel, if the device supports this feature.
             channel.setLightColor(Color.RED);
             channel.enableVibration(true);
             channel.setVibrationPattern(new long[]{100, 200, 300, 400, 500, 400, 300, 200, 400});
-            // Register the channel with the system; you can't change the importance
-            // or other notification behaviors after this
             NotificationManager notificationManager = ContextCompat.getSystemService(context, NotificationManager.class);
             notificationManager.createNotificationChannel(channel);
             Log.d(TAG, "created a notification channel " + channel.toString());
@@ -135,23 +110,24 @@ public class Helper {
     }
 
     protected static Notification getNotification(
-        Context context,
-        int id,
-        String alarmUid,
-        String title,
-        String description,
-        boolean showDismiss,
-        boolean showSnooze,
-        String dismissText,
-        String snoozeText
-        ) {
+            Context context,
+            int id,
+            String alarmUid,
+            String title,
+            String description,
+            boolean showDismiss,
+            boolean showSnooze,
+            String dismissText,
+            String snoozeText,
+            String sound // <-- added sound field
+    ) {
         Resources res = context.getResources();
         String packageName = context.getPackageName();
         int smallIconResId = res.getIdentifier("ic_launcher", "mipmap", packageName);
         String channelId = context.getResources().getString(R.string.notification_channel_id);
-    
+
         PendingIntent pendingIntentDismiss = createActionIntent(context, alarmUid, id, "DISMISS_ACTION");
-    
+
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(smallIconResId)
                 .setContentTitle(title)
@@ -163,32 +139,36 @@ public class Helper {
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setAutoCancel(true)
                 .setOngoing(false)
-                .setSound(null)
-                .setVibrate(null)
                 .setContentIntent(createOnClickedIntent(context, alarmUid, id))
                 .setDeleteIntent(pendingIntentDismiss);
 
-        // If the dismiss button should be visible.
-        if(showDismiss) {
+        // 🔊 Apply sound URI if provided
+        if (sound != null && !sound.isEmpty()) {
+            Uri soundUri = Uri.parse(sound);
+            builder.setSound(soundUri);
+        } else {
+            builder.setSound(null); // You may choose to set a default sound or leave it silent
+        }
+
+        builder.setVibrate(null); // Optional, can be customized
+
+        if (showDismiss) {
             builder.addAction(android.R.drawable.ic_menu_close_clear_cancel, dismissText, pendingIntentDismiss);
         }
 
-        // If snooze is active, add a button for snoozing.
-        if(showSnooze) {
-            PendingIntent pendingIntentSnoozee = createActionIntent(context, alarmUid, id, "SNOOZE_ACTION");
-            builder.addAction(android.R.drawable.ic_menu_recent_history, snoozeText, pendingIntentSnoozee);
+        if (showSnooze) {
+            PendingIntent pendingIntentSnooze = createActionIntent(context, alarmUid, id, "SNOOZE_ACTION");
+            builder.addAction(android.R.drawable.ic_menu_recent_history, snoozeText, pendingIntentSnooze);
         }
 
-    
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             int largeIconResId = res.getIdentifier("ic_launcher", "mipmap", packageName);
             Bitmap largeIconBitmap = BitmapFactory.decodeResource(res, largeIconResId);
             if (largeIconResId != 0) builder.setLargeIcon(largeIconBitmap);
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             builder.setCategory(NotificationCompat.CATEGORY_CALL);
             builder.setColor(Color.parseColor("blue"));
         }
+
         return builder.build();
     }
 
@@ -196,40 +176,20 @@ public class Helper {
         Intent resultIntent = new Intent(context, Helper.getMainActivityClass(context));
         resultIntent.putExtra("ALARM_UID", alarmUid);
 
-        PendingIntent pendingIntent = null;
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {  
-            pendingIntent = PendingIntent.getActivity(
-                context,
-                notificationID,
-                resultIntent,
-                PendingIntent.FLAG_MUTABLE);
-        } else {
-            pendingIntent = PendingIntent.getActivity(
-                context,
-                notificationID,
-                resultIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT);
-        }
-
-        return pendingIntent;
+        return (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                ? PendingIntent.getActivity(context, notificationID, resultIntent, PendingIntent.FLAG_MUTABLE)
+                : PendingIntent.getActivity(context, notificationID, resultIntent, PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
-    /**
-     * Creates an intent for dismissing, snoozing or performing another action in the alarm notification.
-     */
     private static PendingIntent createActionIntent(Context context, String alarmUid, int notificationId, String actionReceived) {
         Intent intent = new Intent(context, NotificationActionReceiver.class);
         intent.setAction(actionReceived);
         intent.putExtra("NOTIFICATION_ID", notificationId);
         intent.putExtra("ALARM_UID", alarmUid);
-    
-        PendingIntent pendingIntent;
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {  
-            pendingIntent = PendingIntent.getBroadcast(context.getApplicationContext(), notificationId, intent, PendingIntent.FLAG_MUTABLE);
-        } else {
-            pendingIntent = PendingIntent.getBroadcast(context.getApplicationContext(), notificationId, intent, PendingIntent.FLAG_UPDATE_CURRENT);
-        }
-        return pendingIntent;
+
+        return (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                ? PendingIntent.getBroadcast(context.getApplicationContext(), notificationId, intent, PendingIntent.FLAG_MUTABLE)
+                : PendingIntent.getBroadcast(context.getApplicationContext(), notificationId, intent, PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
     static Calendar getDate(int day, int hour, int minute) {
@@ -251,10 +211,7 @@ public class Helper {
         try {
             String className = launchIntent.getComponent().getClassName();
             return Class.forName(className);
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-            return null;
-        } catch (NullPointerException e) {
+        } catch (Exception e) {
             e.printStackTrace();
             return null;
         }

@@ -1,8 +1,10 @@
 package com.expoalarmmodule;
 
 import android.content.Context;
+import android.database.Cursor;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
+import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.VibrationEffect;
@@ -19,10 +21,10 @@ class Sound {
     private int userVolume;
     private MediaPlayer mediaPlayer;
     private Vibrator vibrator;
-
     private Context context;
 
     Sound(Context context) {
+        Log.d(TAG, "Sound constructor called");
         this.context = context;
         this.vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
         this.audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
@@ -31,12 +33,14 @@ class Sound {
     }
 
     void play(String sound) {
+        Log.d(TAG, "play called with sound: " + sound);
         Uri soundUri = getSoundUri(sound);
         playSound(soundUri);
         startVibration();
     }
 
     void stop() {
+        Log.d(TAG, "stop called");
         try {
             if (mediaPlayer.isPlaying()) {
                 stopSound();
@@ -49,15 +53,30 @@ class Sound {
     }
 
     private void playSound(Uri soundUri) {
+        Log.d(TAG, "playSound called with URI: " + soundUri);
         try {
             if (!mediaPlayer.isPlaying()) {
-                mediaPlayer.setScreenOnWhilePlaying(true);
+                mediaPlayer.reset();
                 mediaPlayer.setAudioStreamType(AudioManager.STREAM_ALARM);
-                mediaPlayer.setDataSource(context, soundUri);
-                mediaPlayer.setVolume(100, 100);
                 mediaPlayer.setLooping(true);
-                mediaPlayer.prepare();
-                mediaPlayer.start();
+
+                if (soundUri.getScheme() != null && soundUri.getScheme().startsWith("http")) {
+                    mediaPlayer.setDataSource(soundUri.toString());
+                } else {
+                    mediaPlayer.setDataSource(context, soundUri);
+                }
+
+                mediaPlayer.setVolume(1.0f, 1.0f);
+                mediaPlayer.prepareAsync();
+
+                mediaPlayer.setOnPreparedListener(MediaPlayer::start);
+
+                mediaPlayer.setOnErrorListener((mp, what, extra) -> {
+                    Log.e(TAG, "MediaPlayer error: what=" + what + ", extra=" + extra);
+                    return true;
+                });
+
+                Log.d(TAG, "Alarm sound initiated");
             }
         } catch (Exception e) {
             Log.e(TAG, "Failed to play sound", e);
@@ -65,8 +84,8 @@ class Sound {
     }
 
     private void stopSound() {
+        Log.d(TAG, "stopSound called");
         try {
-            // reset the volume to what it was before we changed it.
             audioManager.setStreamVolume(AudioManager.STREAM_ALARM, userVolume, AudioManager.FLAG_PLAY_SOUND);
             mediaPlayer.stop();
             mediaPlayer.reset();
@@ -77,40 +96,69 @@ class Sound {
     }
 
     private void startVibration() {
+        Log.d(TAG, "startVibration called");
         vibrator.vibrate(DEFAULT_VIBRATION);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             vibrator.vibrate(VibrationEffect.createOneShot(5000, VibrationEffect.DEFAULT_AMPLITUDE));
         } else {
-            //deprecated in API 26
             vibrator.vibrate(500);
         }
 
         long[] pattern = {0, 100, 1000};
-
-        // The '0' here means to repeat indefinitely
-        // '0' is actually the index at which the pattern keeps repeating from (the start)
-        // To repeat the pattern from any other point, you could increase the index, e.g. '1'
         vibrator.vibrate(pattern, 0);
     }
 
     private void stopVibration() {
+        Log.d(TAG, "stopVibration called");
         vibrator.cancel();
     }
 
     private Uri getSoundUri(String soundName) {
+        Log.d(TAG, "getSoundUri called with soundName: " + soundName);
+
         Uri soundUri;
-        if (soundName.equals("default")) {
-            soundUri = Settings.System.DEFAULT_RINGTONE_URI;
-        } else {
-            int resId;
-            if (context.getResources().getIdentifier(soundName, "raw", context.getPackageName()) != 0) {
-                resId = context.getResources().getIdentifier(soundName, "raw", context.getPackageName());
+        try {
+            if (soundName == null || soundName.isEmpty() || soundName.equalsIgnoreCase("default")) {
+                soundUri = Settings.System.DEFAULT_ALARM_ALERT_URI;
+            } else if (soundName.startsWith("http://") || soundName.startsWith("https://") || soundName.startsWith("content://")) {
+                soundUri = Uri.parse(soundName);
             } else {
-                soundName = soundName.substring(0, soundName.lastIndexOf('.'));
-                resId = context.getResources().getIdentifier(soundName, "raw", context.getPackageName());
+                soundUri = getSystemAlarmSoundUriByName(soundName);
             }
-            soundUri = Uri.parse("android.resource://" + context.getPackageName() + "/" + resId);
+        } catch (Exception e) {
+            Log.e(TAG, "Error resolving sound URI", e);
+            soundUri = Settings.System.DEFAULT_ALARM_ALERT_URI;
         }
+
         return soundUri;
+    }
+
+    private Uri getSystemAlarmSoundUriByName(String name) {
+        Log.d(TAG, "getSystemAlarmSoundUriByName called with name: " + name);
+
+        RingtoneManager ringtoneMgr = new RingtoneManager(context);
+        ringtoneMgr.setType(RingtoneManager.TYPE_ALARM);
+        Cursor cursor = ringtoneMgr.getCursor();
+
+        Log.d(TAG, "Available system alarm sounds:");
+        int index = 0;
+        while (cursor.moveToNext()) {
+            String title = cursor.getString(RingtoneManager.TITLE_COLUMN_INDEX);
+            Uri uri = ringtoneMgr.getRingtoneUri(cursor.getPosition());
+            Log.d(TAG, "  " + (++index) + ". " + title + " — URI: " + uri.toString());
+        }
+
+        cursor.moveToPosition(-1);
+        while (cursor.moveToNext()) {
+            String title = cursor.getString(RingtoneManager.TITLE_COLUMN_INDEX);
+            Uri uri = ringtoneMgr.getRingtoneUri(cursor.getPosition());
+            if (title.equalsIgnoreCase(name)) {
+                Log.d(TAG, "Matched system tone: " + title);
+                return uri;
+            }
+        }
+
+        Log.w(TAG, "No matching system alarm tone found for: " + name + " — using default");
+        return Settings.System.DEFAULT_ALARM_ALERT_URI;
     }
 }

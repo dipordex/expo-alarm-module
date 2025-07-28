@@ -27,6 +27,7 @@ class Manager {
     
 
     func enable(_ uid: String) {
+        print("Enable UUID = \(uid)")
         let alarm: Alarm! = self.getAlarm(uid) ?? nil;
         
         // Only enables if the alarm already exists and is disabled.
@@ -45,7 +46,6 @@ class Manager {
         self.stop()
         
         let alarm: Alarm! = self.getAlarm(uid) ?? nil
-        
         // Only disables if the alarm already exists and is enabled.
         if((alarm != nil) && alarm.active) {
             // Cancels the notification.

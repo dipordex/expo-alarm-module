@@ -5,6 +5,9 @@ import UserNotifications
 class NotificationScheduler : NotificationSchedulerDelegate
 {
     private let alarms: Alarms = Store.shared.alarms
+    private var manualTriggerTimer: DispatchSourceTimer?
+
+    
     // we need to request user for notifiction permission first
     func requestAuthorization() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) {
@@ -94,31 +97,144 @@ class NotificationScheduler : NotificationSchedulerDelegate
     
     func setNotification(alarm: Alarm) {
         let datesForNotification = getNotificationDates(baseDate: alarm.date)
-        
+
+        // 🔽 If remote URL, download and cache it
+        var localSoundFile: String? = nil
+        if alarm.sound.hasPrefix("http://") || alarm.sound.hasPrefix("https://") {
+            print("🌐 Detected remote sound. Pre-downloading: \(alarm.sound)")
+
+            if let cachedURL = downloadAndCacheSoundSync(urlString: alarm.sound) {
+                localSoundFile = cachedURL.path
+                print("✅ Sound downloaded and cached: \(localSoundFile!)")
+            } else {
+                print("❌ Failed to pre-download sound: \(alarm.sound)")
+            }
+        } else if alarm.sound.hasPrefix("file://") {
+                localSoundFile = alarm.sound
+        }
+
+
         for d in datesForNotification {
             let notificationContent = UNMutableNotificationContent()
             notificationContent.title = alarm.title
             notificationContent.body = alarm.description
-            notificationContent.categoryIdentifier = alarm.snoozeEnabled ? Identifier.snoozeAlarmCategoryIndentifier
-                                                                   : Identifier.alarmCategoryIndentifier
-            notificationContent.sound = UNNotificationSound(named: UNNotificationSoundName("bell.mp3"))
-            notificationContent.userInfo = ["snooze" : alarm.snoozeEnabled, "uid": alarm.uid, "soundName": "bell"]
-            
-            // make dataComponents only contain [weekday, hour, minute] component to make it repeat weakly
-            let dateComponents = Calendar.current.dateComponents([.weekday,.hour,.minute], from: d)
-            let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
-            let request = UNNotificationRequest(identifier: alarm.uid,
-                                                content: notificationContent,
-                                                trigger: trigger)
+            notificationContent.categoryIdentifier = alarm.snoozeEnabled
+                ? Identifier.snoozeAlarmCategoryIndentifier
+                : Identifier.alarmCategoryIndentifier
 
-            // schedule notification by adding request to notification center
+            // Use critical alert to wake device (but this won’t play custom sound in background)
+            if #available(iOS 12.0, *) {
+                notificationContent.sound = .defaultCritical
+            } else {
+                notificationContent.sound = .default
+            }
+
+            notificationContent.userInfo = [
+                "snooze": alarm.snoozeEnabled,
+                "uid": alarm.uid,
+                "soundName": alarm.sound,
+                "localSoundPath": localSoundFile ?? ""
+            ]
+
+
+            let dateComponents = Calendar.current.dateComponents([.weekday, .hour, .minute, .second], from: d)
+            let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
+
+            let request = UNNotificationRequest(identifier: alarm.uid, content: notificationContent, trigger: trigger)
+
+            print("📅 Scheduling iOS notification with UID: \(alarm.uid), sound: \(alarm.sound), fireDate: \(d)")
+            
+            startManualAlarmTrigger(at: d, soundName: alarm.sound, localPath: localSoundFile, uid: alarm.uid)
+
             UNUserNotificationCenter.current().add(request) { error in
                 if let e = error {
-                    print(e.localizedDescription)
+                    print("❌ Error scheduling notification: \(e.localizedDescription)")
+                } else {
+                    print("✅ Notification scheduled: \(alarm.uid)")
                 }
             }
+            
         }
     }
+    
+    func startManualAlarmTrigger(at date: Date, soundName: String, localPath: String?, uid: String) {
+        let secondsRemaining = Int(date.timeIntervalSinceNow)
+        guard secondsRemaining > 0 else {
+            print("⚠️ Alarm \(uid) was scheduled in the past.")
+            return
+        }
+
+        print("⏳ Scheduling manual alarm trigger in \(secondsRemaining)s")
+
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .background))
+        timer.schedule(deadline: .now() + .seconds(secondsRemaining), repeating: .never)
+
+        timer.setEventHandler { [weak self] in
+            print("🚨 Manual trigger reached for alarm \(uid), playing custom sound")
+
+            var bgTaskID: UIBackgroundTaskIdentifier = .invalid
+            bgTaskID = UIApplication.shared.beginBackgroundTask(withName: "ManualAlarmPlayback") {
+                UIApplication.shared.endBackgroundTask(bgTaskID)
+                bgTaskID = .invalid
+            }
+            DispatchQueue.main.async {
+                let appState = UIApplication.shared.applicationState
+                if (appState == .background) {
+                    ExpoAlarmModule().playSound(soundName, localPath: localPath, uuid: uid) {
+                        UIApplication.shared.endBackgroundTask(bgTaskID)
+                        bgTaskID = .invalid
+                    }
+                }
+            }
+            
+            self?.manualTriggerTimer?.cancel()
+            self?.manualTriggerTimer = nil
+        }
+
+        manualTriggerTimer = timer // ✅ Retain the timer
+        timer.resume()
+    }
+
+
+    func downloadAndCacheSoundSync(urlString: String) -> URL? {
+        guard let url = URL(string: urlString) else { return nil }
+
+        let filename = urlString.sha256() + ".m4a"
+        let cacheDir = FileManager.default.temporaryDirectory.appendingPathComponent("alarms", isDirectory: true)
+
+        // Ensure directory exists
+        try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+
+        let targetURL = cacheDir.appendingPathComponent(filename)
+
+        if FileManager.default.fileExists(atPath: targetURL.path) {
+            print("📦 Sound already cached: \(targetURL.path)")
+            return targetURL
+        }
+
+        // Synchronous download using semaphore
+        var resultURL: URL? = nil
+        let semaphore = DispatchSemaphore(value: 0)
+
+        URLSession.shared.downloadTask(with: url) { tempURL, _, error in
+            defer { semaphore.signal() }
+            if let tempURL = tempURL, error == nil {
+                do {
+                    try FileManager.default.copyItem(at: tempURL, to: targetURL)
+                    resultURL = targetURL
+                } catch {
+                    print("❌ Failed to copy downloaded sound: \(error.localizedDescription)")
+                }
+            } else {
+                print("❌ Failed to download sound: \(error?.localizedDescription ?? "unknown")")
+            }
+        }.resume()
+
+        _ = semaphore.wait(timeout: .now() + 20) // wait max 20 sec
+        return resultURL
+    }
+
+
     
     func setNotificationForSnooze(ringtoneName: String, snoozeMinute: Int, uid: String) {
         let currentAlarm = alarms.getAlarm(ByUUIDStr: uid);
@@ -158,5 +274,22 @@ class NotificationScheduler : NotificationSchedulerDelegate
         if w1 != 1 && (w1 < w2 || w2 == 1) {return .before}
         else if w1 == w2 {return .same}
         else {return .after}
+    }
+}
+
+
+import Foundation
+import CommonCrypto
+
+extension String {
+    func sha256() -> String {
+        guard let data = self.data(using: .utf8) else { return self }
+        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+        
+        data.withUnsafeBytes {
+            _ = CC_SHA256($0.baseAddress, CC_LONG(data.count), &hash)
+        }
+
+        return hash.map { String(format: "%02x", $0) }.joined()
     }
 }

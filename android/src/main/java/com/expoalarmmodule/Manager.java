@@ -64,72 +64,78 @@ public class Manager {
             sound.stop();
         }
         Alarm alarm = Storage.getAlarm(context, alarmUid);
-        if(alarm != null) {
-          AlarmDates dates = Storage.getDates(context, alarm.uid);
-          Storage.removeAlarm(context, alarm.uid);
-          Storage.removeDates(context, alarm.uid);
-          if (dates == null) return;
-          for (Date date : dates.getDates()) {
-            int notificationID = dates.getNotificationId(date);
-            Helper.cancelAlarm(context, notificationID);
-          }
+        if (alarm != null) {
+            AlarmDates dates = Storage.getDates(context, alarm.uid);
+            Storage.removeAlarm(context, alarm.uid);
+            Storage.removeDates(context, alarm.uid);
+            if (dates == null) return;
+            for (Date date : dates.getDates()) {
+                int notificationID = dates.getNotificationId(date);
+                Helper.cancelAlarm(context, notificationID);
+            }
         }
     }
 
     static void enable(Context context, String alarmUid) {
         Alarm alarm = Storage.getAlarm(context, alarmUid);
-        if(alarm != null) {
-          if (!alarm.active) {
-              alarm.active = true;
-              Storage.saveAlarm(context, alarm);
-          } else {
-              Log.d(TAG, "Alarm already active - exiting job");
-              return;
-          }
-          AlarmDates dates = alarm.getAlarmDates();
-          Storage.saveDates(context, dates);
-          for (Date date : dates.getDates()) {
-              Helper.scheduleAlarm(context, alarmUid, date.getTime(), dates.getNotificationId(date));
-          }
+        if (alarm != null) {
+            if (!alarm.active) {
+                alarm.active = true;
+                Storage.saveAlarm(context, alarm);
+            } else {
+                Log.d(TAG, "Alarm already active - exiting job");
+                return;
+            }
+            AlarmDates dates = alarm.getAlarmDates();
+            Storage.saveDates(context, dates);
+            for (Date date : dates.getDates()) {
+                Helper.scheduleAlarm(context, alarmUid, date.getTime(), dates.getNotificationId(date));
+            }
         }
     }
 
     static void disable(Context context, String alarmUid) {
         Alarm alarm = Storage.getAlarm(context, alarmUid);
-        if(alarm != null) {
-          if (alarm.active) {
-              alarm.active = false;
-              Storage.saveAlarm(context, alarm);
-          } else {
-              Log.d(TAG, "Alarm already inactive - exiting job");
-              return;
-          }
-          AlarmDates dates = Storage.getDates(context, alarmUid);
-          for (Date date : dates.getDates()) {
-              Helper.cancelAlarm(context, dates.getNotificationId(date));
-          }
+        if (alarm != null) {
+            if (alarm.active) {
+                alarm.active = false;
+                Storage.saveAlarm(context, alarm);
+            } else {
+                Log.d(TAG, "Alarm already inactive - exiting job");
+                return;
+            }
+            AlarmDates dates = Storage.getDates(context, alarmUid);
+            for (Date date : dates.getDates()) {
+                Helper.cancelAlarm(context, dates.getNotificationId(date));
+            }
         }
     }
 
     static void start(Context context, String alarmUid) {
         activeAlarmUid = alarmUid;
-        sound = new Sound(context);
-        sound.play("default");
+        Alarm alarm = Storage.getAlarm(context, alarmUid);
 
-        Log.d(TAG, "Starting " + activeAlarmUid);
+        if (alarm != null) {
+            sound = new Sound(context);
+            String alarmSound = alarm.getSound(); // use the sound from Alarm
+            sound.play(alarmSound);
+            Log.d(TAG, "Starting " + activeAlarmUid + " with sound: " + alarmSound);
+        } else {
+            Log.d(TAG, "Alarm not found: " + alarmUid);
+        }
     }
 
     public static void stop(Context context) {
         Log.d(TAG, "Stopping " + activeAlarmUid);
 
-        if(Objects.nonNull(sound)) {
+        if (Objects.nonNull(sound)) {
             sound.stop();
         }
 
-        if(activeAlarmUid != null) {
+        if (activeAlarmUid != null) {
             Alarm alarm = Storage.getAlarm(context, activeAlarmUid);
             AlarmDates dates = Storage.getDates(context, activeAlarmUid);
-            if(alarm != null) {
+            if (alarm != null) {
                 if (alarm.repeating) {
                     Date current = dates.getCurrentDate();
                     Date updated = AlarmDates.setNextWeek(current);
@@ -149,11 +155,11 @@ public class Manager {
     public static void snooze(Context context) {
         Log.d(TAG, "Snoozing " + activeAlarmUid);
 
-        if(Objects.nonNull(sound)) {
+        if (Objects.nonNull(sound)) {
             sound.stop();
         }
 
-        if(activeAlarmUid != null) {
+        if (activeAlarmUid != null) {
             Alarm alarm = Storage.getAlarm(context, activeAlarmUid);
             AlarmDates dates = Storage.getDates(context, activeAlarmUid);
             Date updated = AlarmDates.snooze(new Date(), alarm.snoozeInterval);
@@ -163,5 +169,4 @@ public class Manager {
             activeAlarmUid = null;
         }
     }
-
 }

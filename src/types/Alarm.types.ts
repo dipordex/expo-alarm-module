@@ -63,4 +63,6 @@ export type AlarmSettings = {
    * If the alarm needs to repeat.
    */
   repeating?: boolean | undefined;
+
+  sound?: string | undefined
 };
