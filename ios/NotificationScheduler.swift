@@ -199,7 +199,7 @@ class NotificationScheduler : NotificationSchedulerDelegate
     func downloadAndCacheSoundSync(urlString: String) -> URL? {
         guard let url = URL(string: urlString) else { return nil }
 
-        let filename = urlString.sha256() + ".m4a"
+        let filename = urlString.sha256() + ".wav"
         let cacheDir = FileManager.default.temporaryDirectory.appendingPathComponent("alarms", isDirectory: true)
 
         // Ensure directory exists

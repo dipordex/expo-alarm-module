@@ -292,7 +292,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
             return
         }
 
-        let hashedFileName = alarm.sound.sha256() + ".m4a"
+        let hashedFileName = alarm.sound.sha256() + ".wav"
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("alarms", isDirectory: true)
             .appendingPathComponent(hashedFileName)
