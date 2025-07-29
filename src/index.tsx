@@ -34,7 +34,7 @@ async function scheduleAlarm(alarm: AlarmSettings) {
 }
 
 async function enableAlarm(uid: string) {
-  await ExpoAlarmModule.enable(Number(uid));
+  await ExpoAlarmModule.enable(uid);
 }
 
 async function disableAlarm(uid: string) {
