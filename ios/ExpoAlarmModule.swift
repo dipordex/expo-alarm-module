@@ -25,6 +25,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
         
         notificationScheduler.requestAuthorization()
         notificationScheduler.registerNotificationCategories()
+        notificationScheduler.restorePollingThreadsFromScheduledNotifications()
         UNUserNotificationCenter.current().delegate = self
         
         // Add observer for applicationDidBecomeActive
@@ -147,8 +148,11 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
         manager.setCurrentPlayingAlarm(uidStr)
 
         let localPath = userInfo["localSoundPath"] as? String
+        let volumeLevel = userInfo["volumeLevel"] as? Float ?? 1.0
+        let vibration = userInfo["vibration"] as? Bool ?? true
 
-        playSound(soundName, localPath: localPath, uuid: uidStr) {
+
+        self.playSound(soundName, localPath: localPath, uuid: uidStr, volume: volumeLevel, vibrate: vibration) {
             DispatchQueue.main.async {
                 if #available(iOS 14.0, *) {
                     completionHandler([.sound, .banner, .list])
@@ -164,7 +168,37 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
     
     @objc func applicationDidBecomeActive() {
         notificationScheduler.syncAlarmStateWithNotification()
+        rescheduleAllActiveAlarms()
     }
+    
+    private func rescheduleAllActiveAlarms() {
+        let alarms = manager.getAllAlarms()
+        let now = Date()
+        let oneWeekFromNow = now.addingTimeInterval(7 * 24 * 60 * 60)
+
+        for alarm in alarms {
+            guard alarm.active else {
+                print("🚫 Alarm \(alarm.uid) is inactive. Skipping reschedule.")
+                continue
+            }
+
+            notificationScheduler.getLatestScheduledFireDate(forUID: alarm.uid) { latest in
+                guard let latest = latest else {
+                    print("⚠️ No scheduled fireDate for alarm \(alarm.uid). Scheduling fresh...")
+                    self.notificationScheduler.setNotification(alarm: alarm)
+                    return
+                }
+
+                if latest >= now && latest <= oneWeekFromNow {
+                    print("🔄 Latest scheduled fireDate \(latest) is within last scheduled week → Rescheduling alarm \(alarm.uid)...")
+                    self.notificationScheduler.setNotification(alarm: alarm)
+                } else {
+                    print("✅ Alarm \(alarm.uid) is already scheduled beyond one week (until \(latest)). Skipping reschedule.")
+                }
+            }
+        }
+    }
+
     
     // The method will be called on the delegate when the user responded to the notification by opening the application, dismissing the notification or choosing a UNNotificationAction. The delegate must be set before the application returns from application:didFinishLaunchingWithOptions:.
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
@@ -193,7 +227,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
     
     
     //AlarmApplicationDelegate protocol
-    func playSound(_ soundName: String, localPath: String? = nil, uuid: String, completion: @escaping () -> Void) {
+    func playSound(_ soundName: String, localPath: String? = nil, uuid: String, volume: Float = 1.0, vibrate: Bool = true, completion: @escaping () -> Void) {
         let alarm = manager.getAlarm(uuid)
         guard let active = alarm?.active else { return }
         print("is Alarm active? \(active) with uuid: \(uuid)")
@@ -201,10 +235,14 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
         print("🔊 Attempting to play sound: \(soundName)")
 
         // Vibrate first
-        AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
-        AudioServicesAddSystemSoundCompletion(SystemSoundID(kSystemSoundID_Vibrate), nil, nil, { _, _ in
+        // 🔔 Vibrate if enabled
+        if vibrate {
             AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
-        }, nil)
+            AudioServicesAddSystemSoundCompletion(SystemSoundID(kSystemSoundID_Vibrate), nil, nil, { _, _ in
+                AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
+            }, nil)
+        }
+
         
 
         // MARK: - Fallback to bell.mp3 from Bundle
@@ -215,7 +253,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
                     ExpoAlarmModule.audioPlayer = try AVAudioPlayer(contentsOf: fallbackURL)
                     ExpoAlarmModule.audioPlayer?.delegate = self
                     ExpoAlarmModule.audioPlayer?.numberOfLoops = -1
-                    ExpoAlarmModule.audioPlayer?.volume = 1.0
+                    ExpoAlarmModule.audioPlayer?.volume = volume
                     ExpoAlarmModule.audioPlayer?.prepareToPlay()
                     ExpoAlarmModule.audioPlayer?.play()
                     print("✅ Playing fallback bundled sound: \(fallbackName).mp3")
@@ -236,6 +274,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
                 ExpoAlarmModule.audioPlayer?.delegate = self
                 ExpoAlarmModule.audioPlayer?.numberOfLoops = -1
                 ExpoAlarmModule.audioPlayer?.prepareToPlay()
+                ExpoAlarmModule.audioPlayer?.volume = volume
                 ExpoAlarmModule.audioPlayer?.play()
                 print("✅ Playing sound from: \(url.path)")
                 manager.setCurrentPlayingAlarm(uuid)

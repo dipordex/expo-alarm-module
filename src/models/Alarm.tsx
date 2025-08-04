@@ -14,7 +14,11 @@ class Alarm {
   repeating?: boolean | undefined;
   active?: boolean | undefined;
   day?: string | Date | number[] | undefined;
+  days?: number[] | undefined;               // For weekly repeating alarms
   sound?: string | undefined
+  timeZone?: string;
+  volumeLevel?: number;
+  vibration?: boolean;
 
   constructor(params: any = null) {
     this.uid = getParam(params, 'uid');
@@ -30,7 +34,11 @@ class Alarm {
     this.repeating = getParam(params, 'repeating');
     this.active = getParam(params, 'active');
     this.day = getParam(params, 'day');
-    this.sound = getParam(params, 'sound')
+    this.days = getParam(params, 'days');
+    this.sound = getParam(params, 'sound');
+    this.timeZone    = getParam(params, 'timeZone')    ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    this.volumeLevel = getParam(params, 'volumeLevel') ?? 1.0;
+    this.vibration   = getParam(params, 'vibration')   ?? true;
   }
 
   static getEmpty() {
@@ -41,6 +49,10 @@ class Alarm {
       minutes: 0,
       repeating: false,
       day: [],
+       days: [],
+       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      volumeLevel: 1.0,
+      vibration: true,
     });
   }
 
@@ -48,6 +60,10 @@ class Alarm {
     return {
       ...this,
       day: toAndroidDays(this.day),
+      days: this.days,
+      timeZone: this.timeZone,
+      volumeLevel: this.volumeLevel,
+      vibration: this.vibration,
     };
   }
 

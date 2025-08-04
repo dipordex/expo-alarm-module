@@ -12,7 +12,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.Map;
 
-class Storage {
+public class Storage {
 
     private static final String TAG = "AlarmStorage";
 
@@ -46,7 +46,7 @@ class Storage {
         return alarms.toArray(new Alarm[0]);
     }
 
-    static Alarm getAlarm(Context context, String alarmUid) {
+    public static Alarm getAlarm(Context context, String alarmUid) {
         Log.d(TAG, "Fetching alarm with UID: " + alarmUid);
         SharedPreferences preferences = getSharedPreferences(context);
         String preferenceUid = preferences.getString(alarmUid, null);

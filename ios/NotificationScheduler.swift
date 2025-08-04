@@ -5,8 +5,9 @@ import UserNotifications
 class NotificationScheduler : NotificationSchedulerDelegate
 {
     private let alarms: Alarms = Store.shared.alarms
-    private var manualTriggerTimer: DispatchSourceTimer?
-
+    private var pollingThreads: [String: Bool] = [:]
+    
+    
     
     // we need to request user for notifiction permission first
     func requestAuthorization() {
@@ -35,7 +36,7 @@ class NotificationScheduler : NotificationSchedulerDelegate
                                                          intentIdentifiers: [],
                                                          hiddenPreviewsBodyPlaceholder: "",
                                                          options: .customDismissAction)
-
+        
         let nonSnoozeAlarmCategroy = UNNotificationCategory(identifier: Identifier.alarmCategoryIndentifier,
                                                             actions: nonSnoozeActions,
                                                             intentIdentifiers: [],
@@ -70,152 +71,297 @@ class NotificationScheduler : NotificationSchedulerDelegate
         })
     }
     
-    private func getNotificationDates(baseDate date: Date) -> [Date]
-    {
-        var notificationDates: [Date] = [Date]()
-        let calendar = Calendar(identifier: Calendar.Identifier.gregorian)
-        let now = Date()
-        let flags: NSCalendar.Unit = [NSCalendar.Unit.weekday, NSCalendar.Unit.weekdayOrdinal, NSCalendar.Unit.day]
-        let dateComponents = (calendar as NSCalendar).components(flags, from: date)
+    private func getNotificationDates(for alarm: Alarm) -> [Date] {
+        var notificationDates: [Date] = []
+        var calendar = Calendar(identifier: .gregorian)
+        if let tz = TimeZone(identifier: alarm.timeZone) {
+            calendar.timeZone = tz
+        }
         
-        //scheduling date is eariler than current date
-        if date < now {
-            //plus one day, otherwise the notification will be fired righton
-            notificationDates.append((calendar as NSCalendar).date(byAdding: NSCalendar.Unit.day, value: 1, to: date, options:.matchStrictly)!)
-        } else {
-            notificationDates.append(date)
+        let now = Date()
+        
+        guard let repeatDays = alarm.days, !repeatDays.isEmpty else {
+            let corrected = NotificationScheduler.correctSecondComponent(date: alarm.date)
+            return corrected < now
+            ? [calendar.date(byAdding: .day, value: 1, to: corrected)!]
+            : [corrected]
+        }
+        
+        let numberOfWeeksToSchedule = 6
+        
+        for weekOffset in 0..<numberOfWeeksToSchedule {
+            for weekday in repeatDays {
+                var components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)
+                components.weekday = weekday
+                
+                // Get the base weekday (this week + offset)
+                if let weekdayDate = calendar.date(from: components),
+                   let targetDate = calendar.date(byAdding: .weekOfYear, value: weekOffset, to: weekdayDate) {
+                    
+                    var alarmComponents = calendar.dateComponents([.hour, .minute], from: alarm.date)
+                    var finalDateComponents = calendar.dateComponents([.year, .month, .day], from: targetDate)
+                    finalDateComponents.hour = alarmComponents.hour
+                    finalDateComponents.minute = alarmComponents.minute
+                    finalDateComponents.second = 0
+                    
+                    if let finalDate = calendar.date(from: finalDateComponents),
+                       finalDate >= now {
+                        let corrected = NotificationScheduler.correctSecondComponent(date: finalDate)
+                        notificationDates.append(corrected)
+                    }
+                }
+            }
         }
         
         return notificationDates
     }
     
-    static func correctSecondComponent(date: Date, calendar: Calendar = Calendar(identifier: Calendar.Identifier.gregorian)) -> Date {
+    
+    
+    static func correctSecondComponent(date: Date, calendar: Calendar = Calendar(identifier: .gregorian)) -> Date {
         let second = calendar.component(.second, from: date)
-        let d = (calendar as NSCalendar).date(byAdding: NSCalendar.Unit.second, value: -second, to: date, options:.matchStrictly)!
-        return d
+        return (calendar as NSCalendar).date(byAdding: .second, value: -second, to: date, options: .matchStrictly)!
     }
     
     func setNotification(alarm: Alarm) {
-        let datesForNotification = getNotificationDates(baseDate: alarm.date)
-
-        // 🔽 If remote URL, download and cache it
+        let datesForNotification = getNotificationDates(for: alarm)
+        
+        // 📥 Handle sound
         var localSoundFile: String? = nil
         if alarm.sound.hasPrefix("http://") || alarm.sound.hasPrefix("https://") {
-            print("🌐 Detected remote sound. Pre-downloading: \(alarm.sound)")
-
+            print("🌐 Downloading remote sound: \(alarm.sound)")
             if let cachedURL = downloadAndCacheSoundSync(urlString: alarm.sound) {
                 localSoundFile = cachedURL.path
-                print("✅ Sound downloaded and cached: \(localSoundFile!)")
+                print("✅ Sound cached: \(localSoundFile!)")
             } else {
-                print("❌ Failed to pre-download sound: \(alarm.sound)")
+                print("❌ Sound download failed: \(alarm.sound)")
             }
         } else if alarm.sound.hasPrefix("file://") {
-                localSoundFile = alarm.sound
+            localSoundFile = alarm.sound
         }
-
-
-        for d in datesForNotification {
-            let notificationContent = UNMutableNotificationContent()
-            notificationContent.title = alarm.title
-            notificationContent.body = alarm.description
-            notificationContent.categoryIdentifier = alarm.snoozeEnabled
+        
+        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+            let existingIDs = Set(requests.map { $0.identifier })
+            
+            // 🔔 Begin scheduling
+            print("\n🔔 Scheduling alarm '\(alarm.uid)' [\(alarm.title)] for \(datesForNotification.count) dates:")
+            
+            let formatter = DateFormatter()
+            formatter.dateFormat = "EEE, MMM d yyyy 'at' HH:mm"
+            
+            for fireDate in datesForNotification {
+                let identifierSuffix = Int(fireDate.timeIntervalSince1970)
+                let requestID = "\(alarm.uid)_\(identifierSuffix)"
+                
+                if existingIDs.contains(requestID) {
+                    print("⏭ Skipping already scheduled: \(requestID)")
+                    continue
+                }
+                
+                let notificationContent = UNMutableNotificationContent()
+                notificationContent.title = alarm.title
+                notificationContent.body = alarm.description
+                notificationContent.categoryIdentifier = alarm.snoozeEnabled
                 ? Identifier.snoozeAlarmCategoryIndentifier
                 : Identifier.alarmCategoryIndentifier
-
-            // Use critical alert to wake device (but this won’t play custom sound in background)
-            if #available(iOS 12.0, *) {
-                notificationContent.sound = .defaultCritical
-            } else {
-                notificationContent.sound = .default
-            }
-
-            notificationContent.userInfo = [
-                "snooze": alarm.snoozeEnabled,
-                "uid": alarm.uid,
-                "soundName": alarm.sound,
-                "localSoundPath": localSoundFile ?? ""
-            ]
-
-
-            let dateComponents = Calendar.current.dateComponents([.weekday, .hour, .minute, .second], from: d)
-            let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
-
-            let request = UNNotificationRequest(identifier: alarm.uid, content: notificationContent, trigger: trigger)
-
-            print("📅 Scheduling iOS notification with UID: \(alarm.uid), sound: \(alarm.sound), fireDate: \(d)")
-            
-            startManualAlarmTrigger(at: d, soundName: alarm.sound, localPath: localSoundFile, uid: alarm.uid)
-
-            UNUserNotificationCenter.current().add(request) { error in
-                if let e = error {
-                    print("❌ Error scheduling notification: \(e.localizedDescription)")
+                
+                if #available(iOS 12.0, *) {
+                    notificationContent.sound = .defaultCritical
                 } else {
-                    print("✅ Notification scheduled: \(alarm.uid)")
+                    notificationContent.sound = .default
                 }
-            }
-            
-        }
-    }
-    
-    func startManualAlarmTrigger(at date: Date, soundName: String, localPath: String?, uid: String) {
-        let secondsRemaining = Int(date.timeIntervalSinceNow)
-        guard secondsRemaining > 0 else {
-            print("⚠️ Alarm \(uid) was scheduled in the past.")
-            return
-        }
-
-        print("⏳ Scheduling manual alarm trigger in \(secondsRemaining)s")
-
-        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .background))
-        timer.schedule(deadline: .now() + .seconds(secondsRemaining), repeating: .never)
-
-        timer.setEventHandler { [weak self] in
-            print("🚨 Manual trigger reached for alarm \(uid), playing custom sound")
-
-            var bgTaskID: UIBackgroundTaskIdentifier = .invalid
-            bgTaskID = UIApplication.shared.beginBackgroundTask(withName: "ManualAlarmPlayback") {
-                UIApplication.shared.endBackgroundTask(bgTaskID)
-                bgTaskID = .invalid
-            }
-            DispatchQueue.main.async {
-                let appState = UIApplication.shared.applicationState
-                if (appState == .background) {
-                    ExpoAlarmModule().playSound(soundName, localPath: localPath, uuid: uid) {
-                        UIApplication.shared.endBackgroundTask(bgTaskID)
-                        bgTaskID = .invalid
+                
+                notificationContent.userInfo = [
+                    "snooze": alarm.snoozeEnabled,
+                    "uid": alarm.uid,
+                    "soundName": alarm.sound,
+                    "localSoundPath": localSoundFile ?? "",
+                    "vibration": alarm.vibration,
+                    "volumeLevel": alarm.volumeLevel,
+                    "timeZone": alarm.timeZone
+                ]
+                
+                
+                let dateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: fireDate)
+                let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
+                
+                let request = UNNotificationRequest(identifier: requestID, content: notificationContent, trigger: trigger)
+                
+                // ✅ Log nicely formatted
+                formatter.timeZone = TimeZone(identifier: alarm.timeZone)
+                let formattedDate = formatter.string(from: fireDate)
+                print("• 🔔 \(formattedDate) [\(alarm.timeZone)] → ID: \(requestID)")
+                
+                self.startManualAlarmTrigger(at: fireDate, soundName: alarm.sound, localPath: localSoundFile, uid: alarm.uid)
+                
+                
+                UNUserNotificationCenter.current().add(request) { error in
+                    if let e = error {
+                        print("  ❌ Failed to schedule \(requestID): \(e.localizedDescription)")
                     }
                 }
             }
             
-            self?.manualTriggerTimer?.cancel()
-            self?.manualTriggerTimer = nil
+            print("✅ Done scheduling alarm '\(alarm.uid)'\n")
         }
-
-        manualTriggerTimer = timer // ✅ Retain the timer
-        timer.resume()
     }
-
-
+    
+    
+    func getLatestScheduledFireDate(forUID uid: String, completion: @escaping (Date?) -> Void) {
+        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+            var latest: Date? = nil
+            
+            for request in requests {
+                if request.identifier.hasPrefix(uid + "_"),
+                   let trigger = request.trigger as? UNCalendarNotificationTrigger,
+                   let date = trigger.nextTriggerDate() {
+                    if latest == nil || date > latest! {
+                        latest = date
+                    }
+                }
+            }
+            
+            completion(latest)
+        }
+    }
+    
+    func startManualAlarmTrigger(at date: Date, soundName: String, localPath: String?, uid: String) {
+        // Build a unique pollingKey using UID + timestamp
+        let timestamp = Int(date.timeIntervalSince1970)
+        let pollingKey = "\(uid)_\(timestamp)"
+        
+        guard date > Date() else {
+            print("⚠️ Alarm \(pollingKey) is in the past — won't trigger.")
+            return
+        }
+        
+        // Prevent duplicate polling threads for same key
+        if pollingThreads[pollingKey] == true {
+            print("⏭ Polling already active for alarm \(pollingKey)")
+            return
+        }
+        
+        print("🕒 Starting alarm polling for \(pollingKey) scheduled at \(date)")
+        pollingThreads[pollingKey] = true
+        SilentAudioManager.shared.startSilentAudio()
+        
+        DispatchQueue.global(qos: .background).async { [weak self] in
+            while self?.pollingThreads[pollingKey] == true {
+                let now = Date()
+                
+                if now >= date {
+                    DispatchQueue.main.async {
+                        print("⏰ [Polling Triggered] Alarm \(pollingKey) fired at \(now)")
+                        self?.playAlarmSound(soundName: soundName, localPath: localPath, uid: uid)
+                        self?.stopPolling(for: pollingKey)
+                    }
+                    break
+                }
+                
+                // Cancel polling if alarm is no longer active
+                if let alarm = Store.shared.alarms.getAlarm(ByUUIDStr: uid), !alarm.active {
+                    print("❌ Alarm \(pollingKey) was deactivated — cancelling.")
+                    self?.stopPolling(for: pollingKey)
+                    break
+                }
+                
+                Thread.sleep(forTimeInterval: 1)
+            }
+        }
+    }
+    
+    
+    func playAlarmSound(soundName: String, localPath: String?, uid: String) {
+        let volumeLevel = Store.shared.alarms.getAlarm(ByUUIDStr: uid)?.volumeLevel ?? 1.0
+        let vibration = Store.shared.alarms.getAlarm(ByUUIDStr: uid)?.vibration ?? true
+        ExpoAlarmModule().playSound(soundName, localPath: localPath, uuid: uid, volume: volumeLevel, vibrate: vibration) {
+            print("Playing from Notification Scheduler")
+        }
+    }
+    
+    func stopPolling(for pollingKey: String) {
+        pollingThreads[pollingKey] = false
+        SilentAudioManager.shared.stopSilentAudio()
+        print("🛑 Stopped polling for \(pollingKey)")
+    }
+    
+    func restorePollingThreadsFromScheduledNotifications() {
+        print("🔄 [Restore] Checking for pending notification requests...")
+        
+        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+            print("📋 Found \(requests.count) pending notifications")
+            
+            for request in requests {
+                let id = request.identifier
+                print("🔍 Processing notification ID: \(id)")
+                
+                // Expect ID format: uid_timestamp
+                let components = id.split(separator: "_")
+                guard components.count == 2 else {
+                    print("⚠️ Invalid ID format, skipping: \(id)")
+                    continue
+                }
+                
+                let uid = String(components[0])
+                let timestampStr = String(components[1])
+                
+                guard let timestamp = TimeInterval(timestampStr) else {
+                    print("⚠️ Invalid timestamp in ID: \(timestampStr)")
+                    continue
+                }
+                
+                let fireDate = Date(timeIntervalSince1970: timestamp)
+                let now = Date()
+                
+                if fireDate <= now {
+                    print("⏩ Alarm \(uid) scheduled at \(fireDate) is in the past — skipping")
+                    continue
+                }
+                
+                guard let alarm = Store.shared.alarms.getAlarm(ByUUIDStr: uid) else {
+                    print("❌ No alarm found in store for uid: \(uid)")
+                    continue
+                }
+                
+                if !alarm.active {
+                    print("🚫 Alarm \(uid) is not active — skipping")
+                    continue
+                }
+                
+                let localPath = request.content.userInfo["localSoundPath"] as? String
+                let soundName = request.content.userInfo["soundName"] as? String ?? "default"
+                
+                print("✅ Restoring polling for alarm \(uid) at \(fireDate) [Sound: \(soundName)]")
+                
+                DispatchQueue.main.async {
+                    self.startManualAlarmTrigger(at: fireDate, soundName: soundName, localPath: localPath, uid: uid)
+                }
+            }
+        }
+    }
+    
+    
+    
     func downloadAndCacheSoundSync(urlString: String) -> URL? {
         guard let url = URL(string: urlString) else { return nil }
-
+        
         let filename = urlString.sha256() + ".wav"
         let cacheDir = FileManager.default.temporaryDirectory.appendingPathComponent("alarms", isDirectory: true)
-
+        
         // Ensure directory exists
         try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
-
+        
         let targetURL = cacheDir.appendingPathComponent(filename)
-
+        
         if FileManager.default.fileExists(atPath: targetURL.path) {
             print("📦 Sound already cached: \(targetURL.path)")
             return targetURL
         }
-
+        
         // Synchronous download using semaphore
         var resultURL: URL? = nil
         let semaphore = DispatchSemaphore(value: 0)
-
+        
         URLSession.shared.downloadTask(with: url) { tempURL, _, error in
             defer { semaphore.signal() }
             if let tempURL = tempURL, error == nil {
@@ -229,12 +375,12 @@ class NotificationScheduler : NotificationSchedulerDelegate
                 print("❌ Failed to download sound: \(error?.localizedDescription ?? "unknown")")
             }
         }.resume()
-
+        
         _ = semaphore.wait(timeout: .now() + 20) // wait max 20 sec
         return resultURL
     }
-
-
+    
+    
     
     func setNotificationForSnooze(ringtoneName: String, snoozeMinute: Int, uid: String) {
         let currentAlarm = alarms.getAlarm(ByUUIDStr: uid);
@@ -249,8 +395,23 @@ class NotificationScheduler : NotificationSchedulerDelegate
     }
     
     func cancelNotification(ByUUIDStr uid: String) {
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [uid])
+        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+            let matchingRequests = requests.filter { request in
+                request.identifier == uid || request.identifier.hasPrefix("\(uid)_")
+            }
+            
+            if matchingRequests.isEmpty {
+                print("⚠️ No matching notifications found to cancel for UID: \(uid)")
+            } else {
+                for request in matchingRequests {
+                    print("🗑️ Cancelling notification with ID: \(request.identifier)")
+                }
+                let identifiersToRemove = matchingRequests.map { $0.identifier }
+                UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiersToRemove)
+            }
+        }
     }
+    
     
     func updateNotification(ByUUIDStr uid: String, date: Date, ringtoneName: String, snoonzeEnabled: Bool) {
         cancelNotification(ByUUIDStr: uid)
@@ -289,7 +450,51 @@ extension String {
         data.withUnsafeBytes {
             _ = CC_SHA256($0.baseAddress, CC_LONG(data.count), &hash)
         }
-
+        
         return hash.map { String(format: "%02x", $0) }.joined()
     }
 }
+
+
+import AVFoundation
+
+class SilentAudioManager {
+    static let shared = SilentAudioManager()
+    private var player: AVAudioPlayer?
+    
+    func startSilentAudio() {
+        guard player == nil else {
+            print("ℹ️ Silent audio already playing")
+            return
+        }
+        
+        guard let path = Bundle.main.path(forResource: "bell", ofType: "mp3") else {
+            print("❌ Silent audio file not found in bundle")
+            return
+        }
+        
+        let url = URL(fileURLWithPath: path)
+        
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try AVAudioSession.sharedInstance().setActive(true)
+            
+            player = try AVAudioPlayer(contentsOf: url)
+            player?.numberOfLoops = -1
+            player?.volume = 0.0
+            player?.prepareToPlay()
+            
+            let success = player?.play() ?? false
+            print(success ? "🎵 Silent audio started playing" : "❌ Failed to play silent audio")
+        } catch {
+            print("❌ Error starting silent audio: \(error)")
+        }
+    }
+    
+    
+    func stopSilentAudio() {
+        player?.stop()
+        print("🛑 Silent audio playback stopped.")
+    }
+}
+

@@ -8,12 +8,17 @@ class Alarm: Codable {
     var title: String
     var description: String
     var sound: String = "bell"
+    var days: [Int]? = nil // <-- NEW: repeating days (e.g., [2, 4, 6] for Mon/Wed/Fri)
+    var vibration: Bool = false
+    var volumeLevel: Float = 1.0
+    var timeZone: String = "Local Time"
+    
     
     convenience init() {
-        self.init(uid: "", date: Date(), active: true, snoozeEnabled: false, title: "Alarm", description: "")
+        self.init(uid: "", date: Date(), active: true, snoozeEnabled: false, title: "Alarm", description: "", vibration: true, volumeLevel: 1.0, timeZone: "Local Time")
     }
     
-    init(uid: String, date: Date, active: Bool, snoozeEnabled: Bool, title: String, description: String, sound: String = "bell") {
+    init(uid: String, date: Date, active: Bool, snoozeEnabled: Bool, title: String, description: String, sound: String = "bell", days: [Int]? = nil, vibration: Bool, volumeLevel: Float, timeZone: String) {
         self.uid = uid
         self.date = date
         self.active = active
@@ -21,9 +26,14 @@ class Alarm: Codable {
         self.title = title
         self.description = description
         self.sound = sound
+        self.days = days
+        self.vibration = vibration
+        self.volumeLevel = volumeLevel
+        self.timeZone = timeZone
     }
     
     init(dictionary: NSMutableDictionary) {
+        
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
         
@@ -35,21 +45,47 @@ class Alarm: Codable {
         self.sound = dictionary["sound"] as? String ?? "bell"
         
         // Converts the Date
+        // Date (for one-time alarms)
         if let dateString = dictionary["day"] as? String,
            let date = dateFormatter.date(from: dateString) {
             self.date = date
         } else {
-            // Handle the case where the date conversion fails or provide a default value
             self.date = Date()
         }
         
+        // Days array (for repeating alarms)
+        if let rawDays = dictionary["days"] as? [Int] {
+            self.days = rawDays
+        }
+        
+        self.vibration = dictionary["vibration"] as? Bool ?? false
+        if let rawVolume = dictionary["volumeLevel"] as? Float {
+            self.volumeLevel = min(max(rawVolume / 100.0, 0.0), 1.0)
+        } else {
+            self.volumeLevel = 1.0
+        }
+        
+        if let tz = dictionary["timeZone"] as? String, !tz.isEmpty {
+            self.timeZone = tz
+        } else {
+            print("⚠️ Missing or invalid timeZone in dictionary")
+            self.timeZone = "Local Time"
+        }
+        
+        
+        
         print("\u{1F4E5} Alarm initialized from dictionary:")
-               print("  • uid: \(uid)")
-               print("  • title: \(title)")
-               print("  • sound: \(sound)")
-               print("  • active: \(active)")
-               print("  • snoozeEnabled: \(snoozeEnabled)")
-               print("  • date: \(date)")
+        print("  • uid: \(uid)")
+        print("  • title: \(title)")
+        print("  • sound: \(sound)")
+        print("  • active: \(active)")
+        print("  • snoozeEnabled: \(snoozeEnabled)")
+        print("  • date: \(date)")
+        print("  - days: \(String(describing: days))")
+        print("  • vibration: \(vibration)")
+        print("  • volumeLevel: \(volumeLevel)")
+        print("  • timeZone: \(timeZone)")
+        
     }
     
     enum CodingKeys: CodingKey {
@@ -59,9 +95,14 @@ class Alarm: Codable {
         case snoozeEnabled
         case title
         case description
+        case days
+        case vibration
+        case volumeLevel
+        case timeZone
     }
     
     required init(from decoder: Decoder) throws {
+        
         let container: KeyedDecodingContainer<Alarm.CodingKeys> = try decoder.container(keyedBy: Alarm.CodingKeys.self)
         
         self.uid = try container.decode(String.self, forKey: Alarm.CodingKeys.uid)
@@ -70,6 +111,11 @@ class Alarm: Codable {
         self.snoozeEnabled = try container.decode(Bool.self, forKey: Alarm.CodingKeys.snoozeEnabled)
         self.title = try container.decode(String.self, forKey: Alarm.CodingKeys.title)
         self.description = try container.decode(String.self, forKey: Alarm.CodingKeys.description)
+        self.days = try container.decodeIfPresent([Int].self, forKey: Alarm.CodingKeys.days)
+        self.vibration = try container.decodeIfPresent(Bool.self, forKey: Alarm.CodingKeys.vibration) ?? false
+        self.volumeLevel = try container.decodeIfPresent(Float.self, forKey: Alarm.CodingKeys.volumeLevel) ?? 1.0
+        self.timeZone = try container.decodeIfPresent(String.self, forKey: Alarm.CodingKeys.timeZone) ?? "Local Time"
+        
     }
     
     func encode(to encoder: Encoder) throws {
@@ -81,7 +127,14 @@ class Alarm: Codable {
         try container.encode(self.snoozeEnabled, forKey: Alarm.CodingKeys.snoozeEnabled)
         try container.encode(self.title, forKey: Alarm.CodingKeys.title)
         try container.encode(self.description, forKey: Alarm.CodingKeys.description)
+        try container.encode(self.days, forKey: Alarm.CodingKeys.days)
+        try container.encode(self.vibration, forKey: Alarm.CodingKeys.vibration)
+        try container.encode(self.volumeLevel, forKey: Alarm.CodingKeys.volumeLevel)
+        try container.encode(self.timeZone, forKey: Alarm.CodingKeys.timeZone)
+        
     }
+    
+    
     
     func toDictionary() -> NSDictionary {
         let alarm: Alarm = self;
@@ -93,7 +146,11 @@ class Alarm: Codable {
             "snoozeEnabled": alarm.snoozeEnabled,
             "title": alarm.title,
             "description": alarm.description,
-            "sound": alarm.sound
+            "sound": alarm.sound,
+            "days": alarm.days as Any,
+            "vibration": alarm.vibration,
+            "volumeLevel": alarm.volumeLevel,
+            "timeZone": alarm.timeZone
         ]
         
         return alarmDictionary;

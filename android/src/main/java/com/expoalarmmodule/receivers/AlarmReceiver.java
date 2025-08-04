@@ -1,15 +1,13 @@
+// AlarmReceiver.java
 package com.expoalarmmodule.receivers;
-
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.os.Build;
 import android.util.Log;
-import android.widget.Toast;
-
+import com.expoalarmmodule.Alarm;
 import com.expoalarmmodule.AlarmService;
-import com.expoalarmmodule.Manager;
+import com.expoalarmmodule.Storage;
 
 public class AlarmReceiver extends BroadcastReceiver {
 
@@ -18,14 +16,24 @@ public class AlarmReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         String alarmUid = intent.getStringExtra("ALARM_UID");
+        int notificationId = intent.getIntExtra("NOTIFICATION_ID", -1);
+        Log.d(TAG, "Received alarm broadcast for UID: " + alarmUid + ", Notification ID: " + notificationId);
+
+        if (alarmUid == null || notificationId == -1) {
+            Log.e(TAG, "Missing ALARM_UID or NOTIFICATION_ID in intent");
+            return;
+        }
+
+        Alarm alarm = Storage.getAlarm(context, alarmUid);
+        if (alarm == null) {
+            Log.e(TAG, "No alarm found for UID: " + alarmUid);
+            return;
+        }
 
         Intent serviceIntent = new Intent(context, AlarmService.class);
         serviceIntent.putExtra("ALARM_UID", alarmUid);
-        serviceIntent.putExtras(serviceIntent);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(serviceIntent);
-        } else {
-            context.startService(serviceIntent);
-        }
+        serviceIntent.putExtra("NOTIFICATION_ID", notificationId);
+        context.startForegroundService(serviceIntent);
+        Log.d(TAG, "Started AlarmService for UID: " + alarmUid + ", Notification ID: " + notificationId);
     }
 }

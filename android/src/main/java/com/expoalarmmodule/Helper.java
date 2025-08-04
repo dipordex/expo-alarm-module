@@ -1,3 +1,4 @@
+// Helper.java
 package com.expoalarmmodule;
 
 import android.app.AlarmManager;
@@ -11,17 +12,16 @@ import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
-
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
-
 import com.expoalarmmodule.receivers.AlarmReceiver;
 import com.expoalarmmodule.receivers.NotificationActionReceiver;
-
 import java.util.Calendar;
+import java.util.Date;
 
 public class Helper {
 
@@ -31,9 +31,10 @@ public class Helper {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         Intent intent = new Intent(context, AlarmReceiver.class);
         intent.putExtra("ALARM_UID", alarmUid);
+        intent.putExtra("NOTIFICATION_ID", notificationID);
 
         PendingIntent pendingIntent = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-                ? PendingIntent.getBroadcast(context, notificationID, intent, PendingIntent.FLAG_MUTABLE)
+                ? PendingIntent.getBroadcast(context, notificationID, intent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)
                 : PendingIntent.getBroadcast(context, notificationID, intent, PendingIntent.FLAG_UPDATE_CURRENT);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -44,19 +45,18 @@ public class Helper {
             alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
         }
 
-        Log.d(TAG, "SDK version: " + Build.VERSION.SDK_INT);
-        Log.d(TAG, "scheduling alarm with notification id: " + notificationID);
-        Log.d(TAG, "alarm scheduled to fire in " + (((float) (triggerAtMillis - System.currentTimeMillis())) / (1000 * 60)) + "min");
+        Log.d(TAG, "Scheduled alarm " + alarmUid + " with ID " + notificationID + " for " + new Date(triggerAtMillis));
     }
 
     static void cancelAlarm(Context context, int notificationID) {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         Intent intent = new Intent(context, AlarmReceiver.class);
         PendingIntent pendingIntent = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-                ? PendingIntent.getBroadcast(context, notificationID, intent, PendingIntent.FLAG_MUTABLE)
+                ? PendingIntent.getBroadcast(context, notificationID, intent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)
                 : PendingIntent.getBroadcast(context, notificationID, intent, PendingIntent.FLAG_UPDATE_CURRENT);
         alarmManager.cancel(pendingIntent);
-        Log.d(TAG, "canceling alarm with notification id: " + notificationID);
+        pendingIntent.cancel();
+        Log.d(TAG, "Cancelled alarm with notification ID: " + notificationID);
     }
 
     static void sendNotification(Context context, Alarm alarm, int notificationID) {
@@ -64,8 +64,9 @@ public class Helper {
             Notification notification = getAlarmNotification(context, alarm, notificationID);
             NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
             notificationManager.notify(notificationID, notification);
+            Log.d(TAG, "Sent notification for alarm " + alarm.uid + " with ID " + notificationID);
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e(TAG, "Failed to send notification for alarm " + alarm.uid, e);
         }
     }
 
@@ -80,13 +81,16 @@ public class Helper {
                 alarm.showSnooze,
                 alarm.dismissText,
                 alarm.snoozeText,
-                alarm.sound // <-- support for sound
+                alarm.sound,
+                alarm.vibration,
+                alarm.volumeLevel
         );
     }
 
     public static void cancelNotification(Context context, int notificationId) {
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         manager.cancel(notificationId);
+        Log.d(TAG, "Cancelled notification with ID: " + notificationId);
     }
 
     static void createNotificationChannel(Context context) {
@@ -103,9 +107,9 @@ public class Helper {
             channel.setVibrationPattern(new long[]{100, 200, 300, 400, 500, 400, 300, 200, 400});
             NotificationManager notificationManager = ContextCompat.getSystemService(context, NotificationManager.class);
             notificationManager.createNotificationChannel(channel);
-            Log.d(TAG, "created a notification channel " + channel.toString());
+            Log.d(TAG, "Created notification channel: " + channel.toString());
         } else {
-            Log.d(TAG, "didn't need to create a notification channel");
+            Log.d(TAG, "No need to create notification channel for SDK " + Build.VERSION.SDK_INT);
         }
     }
 
@@ -119,7 +123,9 @@ public class Helper {
             boolean showSnooze,
             String dismissText,
             String snoozeText,
-            String sound // <-- added sound field
+            String sound,
+            boolean isVibration,
+            int volumeLevel
     ) {
         Resources res = context.getResources();
         String packageName = context.getPackageName();
@@ -131,7 +137,6 @@ public class Helper {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(smallIconResId)
                 .setContentTitle(title)
-                .setTicker(null)
                 .setContentText(description)
                 .setDefaults(NotificationCompat.DEFAULT_ALL)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
@@ -142,15 +147,23 @@ public class Helper {
                 .setContentIntent(createOnClickedIntent(context, alarmUid, id))
                 .setDeleteIntent(pendingIntentDismiss);
 
-        // 🔊 Apply sound URI if provided
+        if (volumeLevel > -1) {
+            setAlarmVolume(context, volumeLevel);
+        }
+
         if (sound != null && !sound.isEmpty()) {
             Uri soundUri = Uri.parse(sound);
             builder.setSound(soundUri);
         } else {
-            builder.setSound(null); // You may choose to set a default sound or leave it silent
+            builder.setSound(null);
         }
 
-        builder.setVibrate(null); // Optional, can be customized
+        if (isVibration) {
+            long[] vibrationPattern = new long[]{0, 400, 200, 400};
+            builder.setVibrate(vibrationPattern);
+        } else {
+            builder.setVibrate(null);
+        }
 
         if (showDismiss) {
             builder.addAction(android.R.drawable.ic_menu_close_clear_cancel, dismissText, pendingIntentDismiss);
@@ -165,19 +178,38 @@ public class Helper {
             int largeIconResId = res.getIdentifier("ic_launcher", "mipmap", packageName);
             Bitmap largeIconBitmap = BitmapFactory.decodeResource(res, largeIconResId);
             if (largeIconResId != 0) builder.setLargeIcon(largeIconBitmap);
-            builder.setCategory(NotificationCompat.CATEGORY_CALL);
-            builder.setColor(Color.parseColor("blue"));
+            builder.setCategory(NotificationCompat.CATEGORY_ALARM);
+            builder.setColor(Color.BLUE);
         }
 
         return builder.build();
     }
 
+    static void setAlarmVolume(Context context, int percentVolume) {
+        AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        if (audioManager != null) {
+            int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM);
+
+            // Clamp to 0–100
+            int percent = Math.max(0, Math.min(percentVolume, 100));
+
+            // Convert percent to stream volume range
+            int scaledVolume = (int) ((percent / 100.0f) * maxVolume);
+
+            audioManager.setStreamVolume(AudioManager.STREAM_ALARM, scaledVolume, AudioManager.FLAG_PLAY_SOUND);
+
+            Log.d(TAG, "🔊 Alarm volume set to: " + scaledVolume + " / " + maxVolume + " (from " + percent + "%)");
+        } else {
+            Log.e(TAG, "❌ AudioManager is null, cannot set alarm volume");
+        }
+    }
+
+
     private static PendingIntent createOnClickedIntent(Context context, String alarmUid, int notificationID) {
         Intent resultIntent = new Intent(context, Helper.getMainActivityClass(context));
         resultIntent.putExtra("ALARM_UID", alarmUid);
-
         return (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-                ? PendingIntent.getActivity(context, notificationID, resultIntent, PendingIntent.FLAG_MUTABLE)
+                ? PendingIntent.getActivity(context, notificationID, resultIntent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)
                 : PendingIntent.getActivity(context, notificationID, resultIntent, PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
@@ -186,10 +218,9 @@ public class Helper {
         intent.setAction(actionReceived);
         intent.putExtra("NOTIFICATION_ID", notificationId);
         intent.putExtra("ALARM_UID", alarmUid);
-
         return (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-                ? PendingIntent.getBroadcast(context.getApplicationContext(), notificationId, intent, PendingIntent.FLAG_MUTABLE)
-                : PendingIntent.getBroadcast(context.getApplicationContext(), notificationId, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+                ? PendingIntent.getBroadcast(context, notificationId, intent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)
+                : PendingIntent.getBroadcast(context, notificationId, intent, PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
     static Calendar getDate(int day, int hour, int minute) {
@@ -199,6 +230,7 @@ public class Helper {
         date.set(Calendar.HOUR_OF_DAY, hour);
         date.set(Calendar.MINUTE, minute);
         date.set(Calendar.SECOND, 0);
+        date.set(Calendar.MILLISECOND, 0);
         if (date.before(today)) {
             date.add(Calendar.DATE, 7);
         }
@@ -212,7 +244,7 @@ public class Helper {
             String className = launchIntent.getComponent().getClassName();
             return Class.forName(className);
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e(TAG, "Failed to get main activity class", e);
             return null;
         }
     }

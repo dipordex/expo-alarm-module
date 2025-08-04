@@ -11,13 +11,13 @@ const LINKING_ERROR =
 const ExpoAlarmModule = NativeModules.ExpoAlarmModule
   ? NativeModules.ExpoAlarmModule
   : new Proxy(
-      {},
-      {
-        get() {
-          throw new Error(LINKING_ERROR);
-        },
-      }
-    );
+    {},
+    {
+      get() {
+        throw new Error(LINKING_ERROR);
+      },
+    }
+  );
 
 async function scheduleAlarm(alarm: AlarmSettings) {
   let alarmToUse: Alarm = new Alarm(alarm);
