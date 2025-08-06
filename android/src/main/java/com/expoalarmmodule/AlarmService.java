@@ -39,6 +39,11 @@ public class AlarmService extends Service {
 
         String alarmUid = intent.getStringExtra("ALARM_UID");
         int notificationId = intent.getIntExtra("NOTIFICATION_ID", -1);
+           if (Manager.getActiveAlarm() != null) {
+                Log.w(TAG, "⚠️ Alarm " + alarmUid + " ignored because alarm " + Manager.getActiveAlarm() + " is already active");
+                return START_NOT_STICKY;
+            }
+            
         if (alarmUid == null || notificationId == -1) {
             Log.e(TAG, "ALARM_UID or NOTIFICATION_ID missing in intent extras");
             return START_NOT_STICKY;
