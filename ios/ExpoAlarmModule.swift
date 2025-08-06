@@ -216,6 +216,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate,
     }
 
     @objc func applicationDidBecomeActive() {
+        self.stop()
         notificationScheduler.syncAlarmStateWithNotification()
         rescheduleAllActiveAlarms()
     }
