@@ -220,8 +220,11 @@ public class Manager {
         if (activeAlarmUid != null) {
             Alarm alarm = Storage.getAlarm(context, activeAlarmUid);
             AlarmDates dates = Storage.getDates(context, activeAlarmUid);
+            Log.d(TAG, "Alarams" + alarm );
+            Log.d(TAG, "Dates" + dates );
             if (alarm != null && dates != null) {
                 Date current = dates.getCurrentDate();
+                Log.d(TAG, "CurentDates" + current );
                 if (current != null) {
                     Date updated = AlarmDates.snooze(new Date(), alarm.snoozeInterval);
                     dates.update(current, updated);
@@ -229,6 +232,12 @@ public class Manager {
                     int notificationId = dates.getNotificationId(updated);
                     Helper.scheduleAlarm(context, dates.alarmUid, updated.getTime(), notificationId);
                     Log.d(TAG, "Snoozed alarm to " + updated + " with ID " + notificationId);
+                } else {
+                    Date date = new Date();
+                    Date updated = AlarmDates.snooze(date, alarm.snoozeInterval);
+                    dates.update(date, updated);
+                    Storage.saveDates(context, dates);
+                    Helper.scheduleAlarm(context, dates.alarmUid, updated.getTime(), dates.notificationIds[0]);
                 }
             }
             activeAlarmUid = null;

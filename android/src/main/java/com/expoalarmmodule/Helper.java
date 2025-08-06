@@ -191,7 +191,7 @@ public class Helper {
             int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM);
 
             // Clamp to 0–100
-            int percent = Math.max(0, Math.min(percentVolume, 100));
+            int percent = Math.max(0, Math.min(percentVolume, 101));
 
             // Convert percent to stream volume range
             int scaledVolume = (int) ((percent / 100.0f) * maxVolume);
