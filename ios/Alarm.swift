@@ -4,7 +4,8 @@ class Alarm: Codable {
     let uid: String
     var date: Date
     var active: Bool
-    var snoozeEnabled: Bool
+    var showSnooze: Bool
+    var snoozeInterval: Int = 5
     var title: String
     var description: String
     var sound: String = "bell"
@@ -15,14 +16,15 @@ class Alarm: Codable {
     
     
     convenience init() {
-        self.init(uid: "", date: Date(), active: true, snoozeEnabled: false, title: "Alarm", description: "", vibration: true, volumeLevel: 1.0, timeZone: "Local Time")
+        self.init(uid: "", date: Date(), active: true, showSnooze: false, snoozeInterval: 5, title: "Alarm", description: "", vibration: true, volumeLevel: 1.0, timeZone: "Local Time")
     }
     
-    init(uid: String, date: Date, active: Bool, snoozeEnabled: Bool, title: String, description: String, sound: String = "bell", days: [Int]? = nil, vibration: Bool, volumeLevel: Float, timeZone: String) {
+    init(uid: String, date: Date, active: Bool, showSnooze: Bool, snoozeInterval: Int, title: String, description: String, sound: String = "bell", days: [Int]? = nil, vibration: Bool, volumeLevel: Float, timeZone: String) {
         self.uid = uid
         self.date = date
         self.active = active
-        self.snoozeEnabled = snoozeEnabled
+        self.showSnooze = showSnooze
+        self.snoozeInterval = snoozeInterval
         self.title = title
         self.description = description
         self.sound = sound
@@ -39,7 +41,8 @@ class Alarm: Codable {
         
         self.uid = dictionary["uid"] as? String ?? "";
         self.active = dictionary["active"] as? Bool ?? false;
-        self.snoozeEnabled = dictionary["snoozeEnabled"] as? Bool ?? false
+        self.showSnooze = dictionary["showSnooze"] as? Bool ?? false
+        self.snoozeInterval = dictionary["snoozeInterval"] as? Int ?? 5
         self.title = dictionary["title"] as? String ?? ""
         self.description = dictionary["description"] as? String ?? ""
         self.sound = dictionary["sound"] as? String ?? "bell"
@@ -79,7 +82,8 @@ class Alarm: Codable {
         print("  • title: \(title)")
         print("  • sound: \(sound)")
         print("  • active: \(active)")
-        print("  • snoozeEnabled: \(snoozeEnabled)")
+        print("  • showSnooze: \(showSnooze)")
+        print("  • snoozeInterval: \(snoozeInterval)")
         print("  • date: \(date)")
         print("  - days: \(String(describing: days))")
         print("  • vibration: \(vibration)")
@@ -92,7 +96,8 @@ class Alarm: Codable {
         case uid
         case date
         case active
-        case snoozeEnabled
+        case showSnooze
+        case snoozeInterval
         case title
         case description
         case days
@@ -108,7 +113,8 @@ class Alarm: Codable {
         self.uid = try container.decode(String.self, forKey: Alarm.CodingKeys.uid)
         self.date = try container.decode(Date.self, forKey: Alarm.CodingKeys.date)
         self.active = try container.decode(Bool.self, forKey: Alarm.CodingKeys.active)
-        self.snoozeEnabled = try container.decode(Bool.self, forKey: Alarm.CodingKeys.snoozeEnabled)
+        self.showSnooze = try container.decode(Bool.self, forKey: Alarm.CodingKeys.showSnooze)
+        self.snoozeInterval = try container.decode(Int.self, forKey: Alarm.CodingKeys.snoozeInterval)
         self.title = try container.decode(String.self, forKey: Alarm.CodingKeys.title)
         self.description = try container.decode(String.self, forKey: Alarm.CodingKeys.description)
         self.days = try container.decodeIfPresent([Int].self, forKey: Alarm.CodingKeys.days)
@@ -124,7 +130,8 @@ class Alarm: Codable {
         try container.encode(self.uid, forKey: Alarm.CodingKeys.uid)
         try container.encode(self.date, forKey: Alarm.CodingKeys.date)
         try container.encode(self.active, forKey: Alarm.CodingKeys.active)
-        try container.encode(self.snoozeEnabled, forKey: Alarm.CodingKeys.snoozeEnabled)
+        try container.encode(self.showSnooze, forKey: Alarm.CodingKeys.showSnooze)
+        try container.encode(self.snoozeInterval, forKey: Alarm.CodingKeys.snoozeInterval)
         try container.encode(self.title, forKey: Alarm.CodingKeys.title)
         try container.encode(self.description, forKey: Alarm.CodingKeys.description)
         try container.encode(self.days, forKey: Alarm.CodingKeys.days)
@@ -143,7 +150,8 @@ class Alarm: Codable {
             "uid": alarm.uid,
             "day": alarm.date.timeIntervalSince1970,
             "active": alarm.active,
-            "snoozeEnabled": alarm.snoozeEnabled,
+            "showSnooze": alarm.showSnooze,
+            "snoozeInterval": alarm.snoozeInterval,
             "title": alarm.title,
             "description": alarm.description,
             "sound": alarm.sound,
@@ -173,3 +181,4 @@ extension Alarm {
     static let added = "added"
     static let removed = "removed"
 }
+

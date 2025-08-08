@@ -142,7 +142,7 @@ class NotificationScheduler: NotificationSchedulerDelegate {
                 let notificationContent = UNMutableNotificationContent()
                 notificationContent.title = alarm.title
                 notificationContent.body = alarm.description
-                notificationContent.categoryIdentifier = alarm.snoozeEnabled ? Identifier.snoozeAlarmCategoryIndentifier : Identifier.alarmCategoryIndentifier
+                notificationContent.categoryIdentifier = alarm.showSnooze ? Identifier.snoozeAlarmCategoryIndentifier : Identifier.alarmCategoryIndentifier
 
                 if #available(iOS 12.0, *) {
                     notificationContent.sound = .defaultCritical
@@ -151,7 +151,8 @@ class NotificationScheduler: NotificationSchedulerDelegate {
                 }
 
                 notificationContent.userInfo = [
-                    "snooze": alarm.snoozeEnabled,
+                    "snooze": alarm.showSnooze,
+                    "snoozeInterval": alarm.snoozeInterval,
                     "uid": alarm.uid,
                     "soundName": alarm.sound,
                     "localSoundPath": localSoundFile ?? "",
@@ -351,20 +352,99 @@ class NotificationScheduler: NotificationSchedulerDelegate {
         return resultURL
     }
 
-    func setNotificationForSnooze(ringtoneName: String, snoozeMinute: Int, uid: String) {
-        os_log("SetInc_Log: 😴 Setting snooze notification for UID: %{public}@", log: log, type: .error, uid)
-        let currentAlarm = alarms.getAlarm(ByUUIDStr: uid)
-
-        if let alarm = currentAlarm {
-            let calendar = Calendar(identifier: .gregorian)
-            let now = Date()
-            let snoozeDate = (calendar as NSCalendar).date(byAdding: .minute, value: snoozeMinute, to: now, options: .matchStrictly)!
-            setNotification(alarm: alarm)
-            os_log("SetInc_Log: ✅ Snooze notification set for UID: %{public}@", log: log, type: .error, uid)
-        } else {
-            os_log("SetInc_Log: ❌ Error when setting notification for snooze, no alarm found for UID: %{public}@", log: log, type: .error, uid)
-        }
-    }
+    func setNotificationForSnooze(
+          ringtoneName: String, snoozeMinute: Int, uid: String
+      ) {
+          os_log("SetInc_Log: 😴 Setting snooze notification for UID: %{public}@", log: log, type: .error, uid)
+          guard let alarm = alarms.getAlarm(ByUUIDStr: uid) else {
+              print("❌ Error: Alarm not found for snooze UID: \(uid)")
+              return
+          }
+          
+          // Compute snooze fire time
+          let calendar = Calendar(identifier: .gregorian)
+          guard let snoozeDate = calendar.date(
+              byAdding: .minute, value: snoozeMinute, to: Date()
+          ) else {
+              print("❌ Failed to compute snooze date")
+              return
+          }
+          
+          let correctedDate = NotificationScheduler.correctSecondComponent(
+              date: snoozeDate)
+          
+          // 📥 Handle sound
+          var localSoundFile: String? = nil
+          if alarm.sound.hasPrefix("http://") || alarm.sound.hasPrefix("https://")
+          {
+              print("🌐 Downloading remote sound: \(alarm.sound)")
+              if let cachedURL = downloadAndCacheSoundSync(urlString: alarm.sound)
+              {
+                  localSoundFile = cachedURL.path
+                  print("✅ Sound cached: \(localSoundFile!)")
+              } else {
+                  print("❌ Sound download failed: \(alarm.sound)")
+                  DispatchQueue.main.async {
+                      self.showDownloadFailedAlert(for: alarm.sound)
+                  }
+                  
+              }
+          } else if alarm.sound.hasPrefix("file://") {
+              localSoundFile = alarm.sound
+          }
+          
+          let requestID = "\(uid)_\(Int(correctedDate.timeIntervalSince1970))"
+          
+          let content = UNMutableNotificationContent()
+          content.title = alarm.title
+          content.body = alarm.description
+          content.categoryIdentifier = Identifier.snoozeAlarmCategoryIndentifier
+          
+          if #available(iOS 12.0, *) {
+              content.sound = .defaultCritical
+          } else {
+              content.sound = .default
+          }
+          
+          content.userInfo = [
+              "snooze": true,
+              "uid": uid,
+              "soundName": ringtoneName,
+              "localSoundPath": localSoundFile ?? "",
+              "vibration": alarm.vibration,
+              "volumeLevel": alarm.volumeLevel,
+              "timeZone": alarm.timeZone,
+              "snoozeInterval": alarm.snoozeInterval
+          ]
+          
+          let trigger = UNCalendarNotificationTrigger(
+              dateMatching: Calendar.current.dateComponents(
+                  [.year, .month, .day, .hour, .minute, .second], from: correctedDate),
+              repeats: false)
+          
+          let request = UNNotificationRequest(
+              identifier: requestID, content: content, trigger: trigger)
+          
+          print("⏰ Scheduling snooze alarm for \(correctedDate) with ID: \(requestID)")
+          
+          // 🔊 Schedule manual trigger via polling
+          self.startManualAlarmTrigger(
+              at: correctedDate,
+              soundName: ringtoneName,
+              localPath: localSoundFile,
+              uid: uid
+          )
+          
+          UNUserNotificationCenter.current().add(request) { error in
+              if let error = error {
+                  print("❌ Failed to schedule snooze notification: \(error.localizedDescription)")
+                  os_log("SetInc_Log: ❌ Error when setting notification for snooze, no alarm found for UID: %{public}@", log: self.log, type: .error, uid)
+              } else {
+                  print("✅ Snooze notification scheduled")
+                  os_log("SetInc_Log: ✅ Snooze notification set for UID: %{public}@", log: self.log, type: .error, uid)
+              }
+          }
+      }
 
     func cancelNotification(ByUUIDStr uid: String) {
         os_log("SetInc_Log: 🗑️ Cancelling notifications for UID: %{public}@", log: log, type: .error, uid)

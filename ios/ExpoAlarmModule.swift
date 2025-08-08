@@ -8,11 +8,11 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
 {
     var isEditMode = false
     public static var audioPlayer: AVAudioPlayer?
-
+    
     private let notificationScheduler: NotificationSchedulerDelegate = NotificationScheduler()
     private let manager: Manager = Manager()
     private let log = OSLog(subsystem: Bundle.main.bundleIdentifier ?? "com.example.setinc", category: "alarm")
-
+    
     public override init() {
         super.init()
         do {
@@ -27,32 +27,40 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
             os_log("SetInc_Log: ❌ Failed to activate AVAudioSession: %{public}@", log: log, type: .error, error.localizedDescription)
             print("could not active session. err:\(error.localizedDescription)")
         }
-
+        
         notificationScheduler.requestAuthorization()
         notificationScheduler.registerNotificationCategories()
         notificationScheduler.restorePollingThreadsFromScheduledNotifications()
         UNUserNotificationCenter.current().delegate = self
-
+        
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(applicationDidBecomeActive),
             name: UIApplication.didBecomeActiveNotification,
             object: nil
         )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(applicationWillTerminate),
+            name: UIApplication.willTerminateNotification,
+            object: nil
+        )
+        
     }
-
+    
     @objc(multiply:withB:withResolver:withRejecter:)
     func multiply(a: Float, b: Float, resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         resolve((a * b))
     }
-
+    
     @objc(set:withResolver:withRejecter:)
     func set(alarm: NSDictionary, resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         let alarmToUse = Alarm(dictionary: alarm as! NSMutableDictionary)
         manager.schedule(alarmToUse)
         resolve(nil)
     }
-
+    
     @objc(enable:withResolver:withRejecter:)
     func enable(uid: String, resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         if uid.isEmpty {
@@ -64,18 +72,18 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
         manager.enable(uid)
         resolve(nil)
     }
-
+    
     @objc(disable:withResolver:withRejecter:)
     func disable(uid: String, resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         manager.disable(uid)
         resolve(nil)
     }
-
+    
     @objc(stop)
     func stop() {
         manager.stop()
     }
-
+    
     @objc(get:withResolver:withRejecter:)
     func get(uid: String, resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         let alarm: Alarm! = manager.getAlarm(uid)
@@ -87,7 +95,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
             resolve(nil)
         }
     }
-
+    
     @objc(getAll:withRejecter:)
     func getAll(resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         let alarmArray: [Alarm] = manager.getAllAlarms()
@@ -99,7 +107,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
             resolve(nil)
         }
     }
-
+    
     @objc(remove:withResolver:withRejecter:)
     func remove(uid: String, resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         if let currentlyPlayingUID = manager.getCurrentPlayingAlarm() {
@@ -112,19 +120,19 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
         manager.remove(uid)
         resolve(nil)
     }
-
+    
     @objc(removeAll:withRejecter:)
     func removeAll(resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         manager.removeAll()
         resolve(nil)
     }
-
+    
     @objc(getState:withRejecter:)
     func getState(resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         let currentAlarm = manager.getCurrentPlayingAlarm()
         resolve(currentAlarm)
     }
-
+    
     // The method will be called on the delegate only if the application is in the foreground. If the method is not implemented or the handler is not called in a timely manner then the notification will not be presented. The application can choose to have the notification presented as a sound, badge, alert and/or in the notification list. This decision should be based on whether the information in the notification is otherwise visible to the user.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
@@ -133,7 +141,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
     ) {
         let userInfo = notification.request.content.userInfo
         print("🔔 willPresent triggered for notification: \(notification.request.identifier)")
-
+        
         guard
             let snoozeEnabled = userInfo["snooze"] as? Bool,
             let soundName = userInfo["soundName"] as? String,
@@ -147,7 +155,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
             }
             return
         }
-
+        
         manager.setCurrentPlayingAlarm(uidStr)
         let localPath = userInfo["localSoundPath"] as? String
         let volumeLevel = userInfo["volumeLevel"] as? Float ?? 1.0
@@ -162,32 +170,50 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
             }
         }
     }
-
+    
     @objc func applicationDidBecomeActive() {
         self.stop()
         notificationScheduler.syncAlarmStateWithNotification()
         rescheduleAllActiveAlarms()
         SilentAudioManager.shared.startSilentAudio()
     }
-
+    
+    @objc func applicationWillTerminate() {
+        print("App will terminate!")
+        let content = UNMutableNotificationContent()
+        content.title = "⏰ Alarm notice"
+        content.body = "Alarms will not ring if the app is terminated."
+        content.sound = UNNotificationSound.default
+        
+        // Fire after 5 seconds (or any time you choose)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(identifier: "termination_warning", content: content, trigger: trigger)
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Failed to schedule warning: \(error)")
+            }
+        }
+    }
+    
     private func rescheduleAllActiveAlarms() {
         let alarms = manager.getAllAlarms()
         let now = Date()
         let oneWeekFromNow = now.addingTimeInterval(7 * 24 * 60 * 60)
-
+        
         for alarm in alarms {
             guard alarm.active else {
                 print("🚫 Alarm \(alarm.uid) is inactive. Skipping reschedule.")
                 continue
             }
-
+            
             notificationScheduler.getLatestScheduledFireDate(forUID: alarm.uid) { latest in
                 guard let latest = latest else {
                     os_log("SetInc_Log: ⚠️ No scheduled fireDate for alarm %@. Scheduling fresh...", log: self.log, type: .error, alarm.uid)
                     self.notificationScheduler.setNotification(alarm: alarm)
                     return
                 }
-
+                
                 if latest >= now && latest <= oneWeekFromNow {
                     print("🔄 Latest scheduled fireDate \(latest) is within last scheduled week → Rescheduling alarm \(alarm.uid)...")
                     self.notificationScheduler.setNotification(alarm: alarm)
@@ -197,7 +223,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
             }
         }
     }
-
+    
     // The method will be called on the delegate when the user responded to the notification by opening the application, dismissing the notification or choosing a UNNotificationAction. The delegate must be set before the application returns from application:didFinishLaunchingWithOptions:.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
@@ -205,19 +231,20 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
-        print("📲 [didReceive] Notification: \(response.notification.request.identifier)")
+        print("📲 [didReceive] Notification: \(response.notification.request.identifier)", userInfo)
         guard
             let soundName = userInfo["soundName"] as? String,
-            let uid = userInfo["uid"] as? String
+            let uid = userInfo["uid"] as? String,
+            let snoozeInterval = userInfo["snoozeInterval"] as? Int
         else {
             os_log("SetInc_Log: ❌ Missing soundName or uid in userInfo", log: log, type: .error)
             completionHandler()
             return
         }
-
+        
         switch response.actionIdentifier {
         case Identifier.snoozeActionIdentifier:
-            notificationScheduler.setNotificationForSnooze(ringtoneName: soundName, snoozeMinute: 9, uid: uid)
+            notificationScheduler.setNotificationForSnooze(ringtoneName: soundName, snoozeMinute: snoozeInterval, uid: uid)
         case Identifier.stopActionIdentifier:
             let alarms = Store.shared.alarms
         default:
@@ -226,11 +253,11 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
         self.stop()
         completionHandler()
     }
-
+    
     private func isSoundAlreadyPlaying() -> Bool {
         return ExpoAlarmModule.audioPlayer?.isPlaying == true
     }
-
+    
     func playSound(
         _ soundName: String, localPath: String? = nil, uuid: String,
         volume: Float = 1.0, vibrate: Bool = true,
@@ -255,7 +282,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
                 AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
             }, nil)
         }
-
+        
         func playBundledFallbackSound() {
             let fallbackName = "bell"
             if let fallbackURL = Bundle.main.url(forResource: fallbackName, withExtension: "mp3") {
@@ -276,7 +303,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
             }
             completion()
         }
-
+        
         func playLocalFile(from url: URL) {
             do {
                 ExpoAlarmModule.audioPlayer = try AVAudioPlayer(contentsOf: url)
@@ -295,7 +322,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
             }
             completion()
         }
-
+        
         if let localPath = localPath {
             let cleanedPath = localPath.replacingOccurrences(of: "file://", with: "")
             let fileURL = URL(fileURLWithPath: cleanedPath)
@@ -309,7 +336,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
                 os_log("SetInc_Log: ❌ File not found at path: %{public}@", log: log, type: .error, fileURL.path)
             }
         }
-
+        
         if let bundledURL = Bundle.main.url(forResource: soundName, withExtension: "mp3") {
             print("📁 Playing bundled resource: \(soundName).mp3")
             if active {
@@ -317,13 +344,13 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
             }
             return
         }
-
+        
         os_log("SetInc_Log: ⚠️ Neither local nor bundled file found — falling back", log: log, type: .error)
         if active {
             playBundledFallbackSound()
         }
     }
-
+    
     func deleteCachedSound(for uid: String) {
         guard let alarm = manager.getAlarm(uid) else {
             os_log("SetInc_Log: ❌ No alarm found with uid %{public}@ to delete cached file", log: log, type: .error, uid)
