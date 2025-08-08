@@ -380,7 +380,7 @@ class NotificationScheduler: NotificationSchedulerDelegate {
         }
     }
 
-    func updateNotification(ByUUIDStr uid: String, date: Date, ringtoneName: String, snoozeEnabled: Bool) {
+    func updateNotification(ByUUIDStr uid: String, date: Date, ringtoneName: String, snoonzeEnabled snoozeEnabled: Bool) {
         os_log("SetInc_Log: 🔄 Updating notification for UID: %{public}@", log: log, type: .error, uid)
         cancelNotification(ByUUIDStr: uid)
         let currentAlarm = alarms.getAlarm(ByUUIDStr: uid)
