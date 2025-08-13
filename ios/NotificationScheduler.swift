@@ -447,17 +447,22 @@ class NotificationScheduler: NotificationSchedulerDelegate {
       }
 
     func cancelNotification(ByUUIDStr uid: String) {
-        os_log("SetInc_Log: 🗑️ Cancelling notifications for UID: %{public}@", log: log, type: .error, uid)
-        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
-            let matchingRequests = requests.filter { $0.identifier == uid || $0.identifier.hasPrefix("\(uid)_") }
-            if matchingRequests.isEmpty {
-                os_log("SetInc_Log: ⚠️ No matching notifications found to cancel for UID: %{public}@", log: self.log, type: .error, uid)
-            } else {
-                let identifiersToRemove = matchingRequests.map { $0.identifier }
-                UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiersToRemove)
-                os_log("SetInc_Log: ✅ Removed %d notifications", log: self.log, type: .error, identifiersToRemove.count)
-            }
-        }
+           os_log("SetInc_Log: 🗑️ Cancelling notifications for UID: %{public}@", log: log, type: .error, uid)
+           UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+               let matchingRequests = requests.filter { $0.identifier == uid || $0.identifier.hasPrefix("\(uid)_") }
+               if matchingRequests.isEmpty {
+                   os_log("SetInc_Log: ⚠️ No matching notifications found to cancel for UID: %{public}@", log: self.log, type: .error, uid)
+               } else {
+                   let identifiersToRemove = matchingRequests.map { $0.identifier }
+                   // Stop polling for each matching identifier (polling key)
+                   for pollingKey in identifiersToRemove {
+                       self.stopPolling(for: pollingKey)
+                   }
+                   
+                   UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiersToRemove)
+                   os_log("SetInc_Log: ✅ Removed %d notifications", log: self.log, type: .error, identifiersToRemove.count)
+               }
+           }
     }
 
     func updateNotification(ByUUIDStr uid: String, date: Date, ringtoneName: String, snoonzeEnabled snoozeEnabled: Bool) {
