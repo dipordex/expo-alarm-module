@@ -178,20 +178,33 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
         SilentAudioManager.shared.startSilentAudio()
     }
     
-    @objc func applicationWillTerminate() {
+      @objc func applicationWillTerminate() {
         print("App will terminate!")
+        // Check if any active alarms exist
+        let alarms = manager.getAllAlarms()
+        let activeAlarms = alarms.filter { $0.active }
+        
+        guard !activeAlarms.isEmpty else {
+            print("🚫 No active alarms → Skipping termination warning notification")
+            return
+        }
+        // Only schedule warning if alarms are active
         let content = UNMutableNotificationContent()
         content.title = "⏰ Alarm notice"
         content.body = "Alarms will not ring if the app is terminated."
         content.sound = UNNotificationSound.default
-        
-        // Fire after 5 seconds (or any time you choose)
+
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-        let request = UNNotificationRequest(identifier: "termination_warning", content: content, trigger: trigger)
-        
+        let request = UNNotificationRequest(
+            identifier: "termination_warning",
+            content: content,
+            trigger: trigger
+        )
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
                 print("Failed to schedule warning: \(error)")
+            } else {
+                print("⚠️ Scheduled termination warning notification")
             }
         }
     }
