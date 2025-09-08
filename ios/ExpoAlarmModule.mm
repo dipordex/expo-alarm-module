@@ -1,7 +1,8 @@
 #import <React/RCTBridgeModule.h>
+#import <React/RCTEventEmitter.h>
 
-@interface RCT_EXTERN_MODULE(ExpoAlarmModule, NSObject)
-	
+@interface RCT_EXTERN_MODULE(ExpoAlarmModule, RCTEventEmitter)
+
 RCT_EXTERN_METHOD(multiply:(float)a withB:(float)b
                  withResolver:(RCTPromiseResolveBlock)resolve
                  withRejecter:(RCTPromiseRejectBlock)reject)
@@ -18,6 +19,10 @@ RCT_EXTERN_METHOD(enable:(NSString)alarmUid
 RCT_EXTERN_METHOD(disable:(NSString)alarmUid
                  withResolver:(RCTPromiseResolveBlock)resolve
                  withRejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(snooze:(RCTPromiseResolveBlock)resolve
+                 withRejecter:(RCTPromiseRejectBlock)reject)
+
 
 RCT_EXTERN_METHOD(stop)
 

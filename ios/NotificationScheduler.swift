@@ -150,16 +150,27 @@ class NotificationScheduler: NotificationSchedulerDelegate {
                     notificationContent.sound = .default
                 }
 
-                notificationContent.userInfo = [
-                    "snooze": alarm.showSnooze,
-                    "snoozeInterval": alarm.snoozeInterval,
-                    "uid": alarm.uid,
-                    "soundName": alarm.sound,
-                    "localSoundPath": localSoundFile ?? "",
-                    "vibration": alarm.vibration,
-                    "volumeLevel": alarm.volumeLevel,
-                    "timeZone": alarm.timeZone,
-                ]
+                let formatter = DateFormatter()
+                    formatter.dateFormat = "HH:mm"
+                    if let tz = TimeZone(identifier: alarm.timeZone) {
+                                   formatter.timeZone = tz
+                               }
+                               let timeString = formatter.string(from: fireDate)
+
+
+                               notificationContent.userInfo = [
+                                   "title": alarm.description,
+                                   "snooze": alarm.showSnooze,
+                                   "snoozeInterval": alarm.snoozeInterval,
+                                   "uid": alarm.uid,
+                                   "soundName": alarm.sound,
+                                   "localSoundPath": localSoundFile ?? "",
+                                   "vibration": alarm.vibration,
+                                   "volumeLevel": alarm.volumeLevel,
+                                   "timeZone": alarm.timeZone,
+                                   "timeString": timeString
+                               ]
+            
 
                 let dateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: fireDate)
                 let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
@@ -267,7 +278,7 @@ class NotificationScheduler: NotificationSchedulerDelegate {
         os_log("SetInc_Log: 🔊 Playing alarm sound for UID: %{public}@", log: log, type: .error, uid)
         let volumeLevel = Store.shared.alarms.getAlarm(ByUUIDStr: uid)?.volumeLevel ?? 1.0
         let vibration = Store.shared.alarms.getAlarm(ByUUIDStr: uid)?.vibration ?? true
-        ExpoAlarmModule().playSound(soundName, localPath: localPath, uuid: uid, volume: volumeLevel, vibrate: vibration) {
+        ExpoAlarmModule.shared.playSound(soundName, localPath: localPath, uuid: uid, volume: volumeLevel, vibrate: vibration) {
             os_log("SetInc_Log: ✅ Play sound completed for UID: %{public}@", log: self.log, type: .error, uid)
         }
     }

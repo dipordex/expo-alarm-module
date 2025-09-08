@@ -32,11 +32,13 @@ class Sound {
         this.mediaPlayer = new MediaPlayer();
     }
 
-    void play(String sound) {
+    void play(String sound, Boolean isVibration) {
         Log.d(TAG, "play called with sound: " + sound);
         Uri soundUri = getSoundUri(sound);
         playSound(soundUri);
-        startVibration();
+        if (isVibration) {
+            startVibration();
+        }
     }
 
     void stop() {

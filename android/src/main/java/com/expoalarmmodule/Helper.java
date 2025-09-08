@@ -20,8 +20,16 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 import com.expoalarmmodule.receivers.AlarmReceiver;
 import com.expoalarmmodule.receivers.NotificationActionReceiver;
+
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
 
 public class Helper {
 
@@ -32,7 +40,6 @@ public class Helper {
         Intent intent = new Intent(context, AlarmReceiver.class);
         intent.putExtra("ALARM_UID", alarmUid);
         intent.putExtra("NOTIFICATION_ID", notificationID);
-
         PendingIntent pendingIntent = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
                 ? PendingIntent.getBroadcast(context, notificationID, intent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)
                 : PendingIntent.getBroadcast(context, notificationID, intent, PendingIntent.FLAG_UPDATE_CURRENT);
@@ -205,12 +212,31 @@ public class Helper {
     }
 
 
-    private static PendingIntent createOnClickedIntent(Context context, String alarmUid, int notificationID) {
-        Intent resultIntent = new Intent(context, Helper.getMainActivityClass(context));
-        resultIntent.putExtra("ALARM_UID", alarmUid);
-        return (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-                ? PendingIntent.getActivity(context, notificationID, resultIntent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)
-                : PendingIntent.getActivity(context, notificationID, resultIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+//    private static PendingIntent createOnClickedIntent(Context context, String alarmUid, int notificationID) {
+//        Intent resultIntent = new Intent(context, Helper.getMainActivityClass(context));
+//        resultIntent.putExtra("ALARM_UID", alarmUid);
+//        resultIntent.setAction("CLICK_ACTION");
+//        Log.d("Notification clicked","hello");
+//        return (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+//                ? PendingIntent.getActivity(context, notificationID, resultIntent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)
+//                : PendingIntent.getActivity(context, notificationID, resultIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+//    }
+
+     static PendingIntent createOnClickedIntent(Context context, String alarmUid, int notificationID) {
+        Intent intent = new Intent(context, NotificationActionReceiver.class);
+        intent.setAction("CLICK_ACTION");
+        intent.putExtra("ALARM_UID", alarmUid);
+        intent.putExtra("NOTIFICATION_ID", notificationID);
+         Alarm alarm = Storage.getAlarm(context, alarmUid);
+         Log.d("Notification is Alarm",alarm.description);
+         intent.putExtra("ALARM_TITLE", alarm.description);
+         intent.putExtra("ALARM_TIME", Helper.getTimeInZone(alarm.date.toString(), alarm.timeZone));
+
+        int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                ? PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
+                : PendingIntent.FLAG_UPDATE_CURRENT;
+
+        return PendingIntent.getBroadcast(context, notificationID, intent, flags);
     }
 
     private static PendingIntent createActionIntent(Context context, String alarmUid, int notificationId, String actionReceived) {
@@ -218,6 +244,12 @@ public class Helper {
         intent.setAction(actionReceived);
         intent.putExtra("NOTIFICATION_ID", notificationId);
         intent.putExtra("ALARM_UID", alarmUid);
+        Alarm alarm = Storage.getAlarm(context, alarmUid);
+        Log.d("Notification is Alarm",alarm.description);
+        intent.putExtra("ALARM_TITLE", alarm.description);
+        intent.putExtra("ALARM_TIME", Helper.getTimeInZone(alarm.date.toString(), alarm.timeZone));
+
+        Log.d("Notification is tapped",actionReceived);
         return (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
                 ? PendingIntent.getBroadcast(context, notificationId, intent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)
                 : PendingIntent.getBroadcast(context, notificationId, intent, PendingIntent.FLAG_UPDATE_CURRENT);
@@ -237,7 +269,7 @@ public class Helper {
         return date;
     }
 
-    static Class getMainActivityClass(Context context) {
+    public static Class getMainActivityClass(Context context) {
         String packageName = context.getPackageName();
         Intent launchIntent = context.getPackageManager().getLaunchIntentForPackage(packageName);
         try {
@@ -247,5 +279,27 @@ public class Helper {
             Log.e(TAG, "Failed to get main activity class", e);
             return null;
         }
+    }
+
+    public static String getTimeInZone(String alarmDay, String timeZone) {
+        if (alarmDay == null || timeZone == null) return null;
+
+        try {
+            // Parse ISO-8601 datetime with zone
+            ZonedDateTime zonedDateTime = null;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                zonedDateTime = ZonedDateTime.parse(alarmDay);
+                // Convert to target timezone
+                ZonedDateTime targetZoneTime = zonedDateTime.withZoneSameInstant(ZoneId.of(timeZone));
+                // Format time in HH:mm
+                DateTimeFormatter outputFormatter = DateTimeFormatter.ofPattern("HH:mm");
+                return targetZoneTime.format(outputFormatter);
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+        return alarmDay;
     }
 }

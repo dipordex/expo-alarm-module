@@ -22,13 +22,13 @@ public class Manager {
         if (dates.getDates().isEmpty()) {
             Log.w(TAG, "⚠️ No dates generated for alarm UID: " + alarm.uid + ". Check 'days' or 'date' fields.");
         }
-
         for (Date date : dates.getDates()) {
             int notificationId = dates.getNotificationId(date);
             Log.d(TAG, "📆 → Scheduling for: " + date.toString() +
                     " | Notification ID: " + notificationId +
                     " | Alarm UID: " + alarm.uid);
             Helper.scheduleAlarm(context, alarm.uid, date.getTime(), notificationId);
+            Log.d(TAG, "schedule Date:" + date.getTime());
         }
 
         Log.d(TAG, "💾 Saving alarm & dates for UID: " + alarm.uid);
@@ -175,7 +175,7 @@ public class Manager {
         if (alarm != null) {
             sound = new Sound(context);
             String alarmSound = alarm.getSound();
-            sound.play(alarmSound);
+            sound.play(alarmSound,alarm.vibration);
             Log.d(TAG, "Started alarm " + activeAlarmUid + " with sound: " + alarmSound);
         } else {
             Log.w(TAG, "Alarm not found: " + alarmUid);

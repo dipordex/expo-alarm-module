@@ -39,6 +39,7 @@ public class AlarmService extends Service {
 
         String alarmUid = intent.getStringExtra("ALARM_UID");
         int notificationId = intent.getIntExtra("NOTIFICATION_ID", -1);
+
            if (Manager.getActiveAlarm() != null) {
                 Log.w(TAG, "⚠️ Alarm " + alarmUid + " ignored because alarm " + Manager.getActiveAlarm() + " is already active");
                 return START_NOT_STICKY;
@@ -62,7 +63,8 @@ public class AlarmService extends Service {
             Log.e(TAG, "Failed to create notification for alarm");
             return START_NOT_STICKY;
         }
-
+        Log.d(TAG, "onStartCommand: Demo Test hh:MM" + alarm.hour + ":" + alarm.minutes);
+        ExpoAlarmModuleModule.triggerNotificationTapped(alarmUid,alarm.description,Helper.getTimeInZone(alarm.date.toString(), alarm.timeZone));
         Manager.start(getApplicationContext(), alarmUid);
         startForeground(notificationId, notification);
         Log.d(TAG, "Foreground service started with notification ID: " + notificationId);

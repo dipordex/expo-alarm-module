@@ -3,18 +3,38 @@ import CommonCrypto
 import EventKit
 import os.log
 
+
 @objc(ExpoAlarmModule)
-class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayerDelegate
+final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, AVAudioPlayerDelegate
 {
     var isEditMode = false
     public static var audioPlayer: AVAudioPlayer?
+    //    private static var instanceCounter = 0
+    //    private let instanceID: Int
+    
+    private static weak var _shared: ExpoAlarmModule?
+    
+    static var shared: ExpoAlarmModule {
+        guard let instance = _shared else {
+            fatalError("ExpoAlarmModule.shared accessed before initialization")
+        }
+        return instance
+    }
+    
     
     private let notificationScheduler: NotificationSchedulerDelegate = NotificationScheduler()
     private let manager: Manager = Manager()
     private let log = OSLog(subsystem: Bundle.main.bundleIdentifier ?? "com.example.setinc", category: "alarm")
     
-    public override init() {
+    private override init() {
+        
+        //        ExpoAlarmModule.instanceCounter += 1
+        //        self.instanceID = ExpoAlarmModule.instanceCounter
+        
         super.init()
+        ExpoAlarmModule._shared = self
+        
+        //        os_log("SetInc_Log: 🆕 Initializing ExpoAlarmModule instance #%d", log: log, type: .info, instanceID)
         do {
             try AVAudioSession.sharedInstance().setCategory(AVAudioSession.Category.playback)
         } catch let error as NSError {
@@ -31,6 +51,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
         notificationScheduler.requestAuthorization()
         notificationScheduler.registerNotificationCategories()
         notificationScheduler.restorePollingThreadsFromScheduledNotifications()
+        //        startBridgeStatusLogging()
         UNUserNotificationCenter.current().delegate = self
         
         NotificationCenter.default.addObserver(
@@ -47,6 +68,47 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
             object: nil
         )
         
+    }
+    
+    //    private func startBridgeStatusLogging() {
+    //        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+    //            guard let self = self else { return }
+    //            os_log("SetInc_Log: ℹ️ [Instance #%d] Bridge status: %{public}@",
+    //                   log: self.log,
+    //                   type: .info,
+    //                   self.instanceID,
+    //                   self.bridge != nil ? "Available" : "Nil")
+    //        }
+    //    }
+    
+    override static func requiresMainQueueSetup() -> Bool {
+        return true
+    }
+    
+    @objc
+    override func supportedEvents() -> [String]! {
+        return ["onAlarmNotificationTapped", "onAlarmSnoozeTapped", "onAlarmDismissTapped"]
+    }
+    
+    // Call this from AppDelegate or Notification Delegate
+    func emitAlarmTappedEvent(uid: String, title: String, timeString: String) {
+           sendEvent(withName: "onAlarmNotificationTapped", body: [
+               "uid": uid,
+               "title": title,
+               "time": timeString
+           ])
+       }
+    
+    func emitAlarmSnoozeTappedEvent(uid: String) {
+        sendEvent(withName: "onAlarmSnoozeTapped", body: [
+            "uid": uid,
+        ])
+    }
+    
+    func emitAlarmDismissTappedEvent(uid: String) {
+        sendEvent(withName: "onAlarmDismissTapped", body: [
+            "uid": uid,
+        ])
     }
     
     @objc(multiply:withB:withResolver:withRejecter:)
@@ -121,6 +183,29 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
         resolve(nil)
     }
     
+    @objc(snooze:withRejecter:)
+    func snooze(resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
+        // Get the currently playing alarm UID
+        guard let uid = manager.getCurrentPlayingAlarm(),
+              let alarm = manager.getAlarm(uid) else {
+            reject("E_NO_ALARM", "No alarm is currently playing", nil)
+            return
+        }
+        
+        // Stop the current alarm sound
+        self.stop()
+        
+        // Use a default snooze interval (e.g., 5 minutes)
+        let defaultSnoozeMinutes = 5
+        notificationScheduler.setNotificationForSnooze(
+            ringtoneName: alarm.sound,
+            snoozeMinute: defaultSnoozeMinutes,
+            uid: uid
+        )
+        
+        resolve(nil)
+    }
+    
     @objc(removeAll:withRejecter:)
     func removeAll(resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         manager.removeAll()
@@ -143,6 +228,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
         print("🔔 willPresent triggered for notification: \(notification.request.identifier)")
         
         guard
+            let title = userInfo["title"] as? String,
             let snoozeEnabled = userInfo["snooze"] as? Bool,
             let soundName = userInfo["soundName"] as? String,
             let uidStr = userInfo["uid"] as? String
@@ -169,16 +255,17 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
                 }
             }
         }
+        let timeString = userInfo["timeString"] as? String ?? ""
+        self.emitAlarmTappedEvent(uid: uidStr, title: title, timeString: timeString)
     }
     
     @objc func applicationDidBecomeActive() {
-        self.stop()
         notificationScheduler.syncAlarmStateWithNotification()
         rescheduleAllActiveAlarms()
         SilentAudioManager.shared.startSilentAudio()
     }
     
-      @objc func applicationWillTerminate() {
+    @objc func applicationWillTerminate() {
         print("App will terminate!")
         // Check if any active alarms exist
         let alarms = manager.getAllAlarms()
@@ -193,7 +280,8 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
         content.title = "⏰ Alarm notice"
         content.body = "Alarms will not ring if the app is terminated."
         content.sound = UNNotificationSound.default
-
+        
+        // Fire after 5 seconds (or any time you choose)
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(
             identifier: "termination_warning",
@@ -246,6 +334,7 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
         let userInfo = response.notification.request.content.userInfo
         print("📲 [didReceive] Notification: \(response.notification.request.identifier)", userInfo)
         guard
+            let title = userInfo["title"] as? String,
             let soundName = userInfo["soundName"] as? String,
             let uid = userInfo["uid"] as? String,
             let snoozeInterval = userInfo["snoozeInterval"] as? Int
@@ -257,13 +346,18 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
         
         switch response.actionIdentifier {
         case Identifier.snoozeActionIdentifier:
+            self.stop()
             notificationScheduler.setNotificationForSnooze(ringtoneName: soundName, snoozeMinute: snoozeInterval, uid: uid)
+            self.emitAlarmSnoozeTappedEvent(uid: uid)
         case Identifier.stopActionIdentifier:
-            let alarms = Store.shared.alarms
+            self.stop()
+            self.emitAlarmDismissTappedEvent(uid: uid)
+            
         default:
             os_log("SetInc_Log: ⚠️ Unknown action identifier: %{public}@", log: log, type: .error, response.actionIdentifier)
+            let timeString = userInfo["timeString"] as? String ?? ""
+            self.emitAlarmTappedEvent(uid: uid, title: title, timeString: timeString)
         }
-        self.stop()
         completionHandler()
     }
     

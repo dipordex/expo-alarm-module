@@ -18,6 +18,7 @@ import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableNativeArray;
 import com.facebook.react.bridge.WritableNativeMap;
 import com.facebook.react.module.annotations.ReactModule;
+import com.facebook.react.modules.core.DeviceEventManagerModule;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -27,12 +28,65 @@ import java.util.ArrayList;
 public class ExpoAlarmModuleModule extends ReactContextBaseJavaModule {
 
     private final ReactApplicationContext reactContext;
+    private static ReactApplicationContext reactContextStatic;  // <-- static React context reference
     public static final String NAME = "ExpoAlarmModule";
 
     public ExpoAlarmModuleModule(ReactApplicationContext reactContext) {
         super(reactContext);
         this.reactContext = reactContext;
+        reactContextStatic = reactContext;  // assign static context here
         Helper.createNotificationChannel(reactContext);
+    }
+
+
+    // Static helper so other classes can trigger it
+    public static void triggerNotificationTapped(String uid, String title, String time) {
+        if (reactContextStatic == null) {
+            Log.e(NAME, "ReactApplicationContext is null! Cannot emit event.");
+            return;
+        }
+
+        WritableMap params = new WritableNativeMap();
+        params.putString("uid", uid);
+        params.putString("title", title);
+        params.putString("time", time);
+
+        reactContextStatic
+                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("onAlarmNotificationTapped", params);
+    }
+
+    public static void triggerNotificationSnoozeTapped(String uid, String title, String time) {
+        if (reactContextStatic == null) {
+            Log.e(NAME, "ReactApplicationContext is null! Cannot emit event.");
+            return;
+        }
+
+        WritableMap params = new WritableNativeMap();
+        params.putString("uid", uid);
+        params.putString("title", title);
+        params.putString("time", time);
+
+        reactContextStatic
+                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("onAlarmSnoozeTapped", params);
+    }
+
+
+    public static void triggerNotificationDissmissTapped(String uid, String title, String time) {
+        if (reactContextStatic == null) {
+            Log.e(NAME, "ReactApplicationContext is null! Cannot emit event.");
+            return;
+        }
+
+        WritableMap params = new WritableNativeMap();
+        params.putString("uid", uid);
+        params.putString("title", title);
+        params.putString("time", time);
+
+        reactContextStatic
+                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("onAlarmDismissTapped", params);
     }
 
     @Override
