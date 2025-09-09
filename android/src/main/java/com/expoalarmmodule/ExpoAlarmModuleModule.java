@@ -40,7 +40,7 @@ public class ExpoAlarmModuleModule extends ReactContextBaseJavaModule {
 
 
     // Static helper so other classes can trigger it
-    public static void triggerNotificationTapped(String uid, String title, String time) {
+    public static void triggerNotificationTapped(String uid, String title, String time, String id) {
         if (reactContextStatic == null) {
             Log.e(NAME, "ReactApplicationContext is null! Cannot emit event.");
             return;
@@ -50,6 +50,7 @@ public class ExpoAlarmModuleModule extends ReactContextBaseJavaModule {
         params.putString("uid", uid);
         params.putString("title", title);
         params.putString("time", time);
+        params.putString("notificationId", id);
 
         reactContextStatic
                 .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
@@ -166,6 +167,7 @@ public class ExpoAlarmModuleModule extends ReactContextBaseJavaModule {
     public void get(String alarmUid, Promise promise) {
         try {
             Alarm alarm = Storage.getAlarm(reactContext, alarmUid);
+            Log.d("Demo", "Days For Multi$$ :" + alarm.days);
             promise.resolve(serializeAlarmObject(alarm));
         } catch (Exception e) {
             promise.reject("ERROR_GET_ALARM", e.getMessage(), e);
@@ -306,9 +308,8 @@ public class ExpoAlarmModuleModule extends ReactContextBaseJavaModule {
         } else if (!alarm.days.isEmpty()) {
             map.putInt("hour", alarm.hour);
             map.putInt("minutes", alarm.minutes);
-            map.putArray("days", serializeArray(alarm.days));
         }
-
+        map.putArray("days", serializeArray(alarm.days));
         return map;
     }
 

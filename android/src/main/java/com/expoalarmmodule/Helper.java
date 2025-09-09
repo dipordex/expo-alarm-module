@@ -1,6 +1,7 @@
 // Helper.java
 package com.expoalarmmodule;
 
+import android.app.ActivityManager;
 import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -28,6 +29,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
 
@@ -100,8 +102,44 @@ public class Helper {
         Log.d(TAG, "Cancelled notification with ID: " + notificationId);
     }
 
+//    static void createNotificationChannel(Context context) {
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+//            String id = context.getResources().getString(R.string.notification_channel_id);
+//            String name = context.getResources().getString(R.string.notification_channel_name);
+//            String description = context.getResources().getString(R.string.notification_channel_desc);
+//            int importance = NotificationManager.IMPORTANCE_HIGH;
+//            NotificationChannel channel = new NotificationChannel(id, name, importance);
+//            channel.setDescription(description);
+//            channel.enableLights(true);
+//            channel.setLightColor(Color.RED);
+//            channel.enableVibration(true);
+//            channel.setVibrationPattern(new long[]{100, 200, 300, 400, 500, 400, 300, 200, 400});
+//            NotificationManager notificationManager = ContextCompat.getSystemService(context, NotificationManager.class);
+//            notificationManager.createNotificationChannel(channel);
+//            Log.d(TAG, "Created notification channel: " + channel.toString());
+//        } else {
+//            Log.d(TAG, "No need to create notification channel for SDK " + Build.VERSION.SDK_INT);
+//        }
+//    }
+
     static void createNotificationChannel(Context context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager manager = ContextCompat.getSystemService(context, NotificationManager.class);
+            // Default importance (foreground)
+            String defaultId = context.getString(R.string.notification_channel_id_default);
+            NotificationChannel defaultChannel =
+                    new NotificationChannel(defaultId, "Expo Alarms (Default)", NotificationManager.IMPORTANCE_DEFAULT);
+            defaultChannel.setDescription("Alarms when app is in foreground");
+            manager.createNotificationChannel(defaultChannel);
+
+            // High importance (background/terminated)
+            String highId = context.getString(R.string.notification_channel_id_high);
+            NotificationChannel highChannel =
+                    new NotificationChannel(highId, "Expo Alarms (High)", NotificationManager.IMPORTANCE_HIGH);
+            highChannel.setDescription("Alarms when app is in background");
+            manager.createNotificationChannel(highChannel);
+
+            Log.d(TAG, "Created both notification channels: default + high");
             String id = context.getResources().getString(R.string.notification_channel_id);
             String name = context.getResources().getString(R.string.notification_channel_name);
             String description = context.getResources().getString(R.string.notification_channel_desc);
@@ -137,7 +175,13 @@ public class Helper {
         Resources res = context.getResources();
         String packageName = context.getPackageName();
         int smallIconResId = res.getIdentifier("ic_launcher", "mipmap", packageName);
-        String channelId = context.getResources().getString(R.string.notification_channel_id);
+//        String channelId = context.getResources().getString(R.string.notification_channel_id);
+                String channelId;
+        if (isAppInForeground(context)) {
+            channelId = context.getString(R.string.notification_channel_id_default);
+        } else {
+            channelId = context.getString(R.string.notification_channel_id_high);
+        }
 
         PendingIntent pendingIntentDismiss = createActionIntent(context, alarmUid, id, "DISMISS_ACTION");
 
@@ -153,6 +197,16 @@ public class Helper {
                 .setOngoing(false)
                 .setContentIntent(createOnClickedIntent(context, alarmUid, id))
                 .setDeleteIntent(pendingIntentDismiss);
+        if (isAppInForeground(context)) {
+            // Foreground: only status bar entry, no popup
+            builder.setPriority(NotificationCompat.PRIORITY_LOW);
+            builder.setDefaults(0); // no sound/vibration popup
+        } else {
+            // Background: show popup with sound/vibration
+            builder.setPriority(NotificationCompat.PRIORITY_HIGH);
+            builder.setDefaults(NotificationCompat.DEFAULT_ALL);
+        }
+
 
         if (volumeLevel > -1) {
             setAlarmVolume(context, volumeLevel);
@@ -301,5 +355,22 @@ public class Helper {
             return null;
         }
         return alarmDay;
+    }
+
+    public static boolean isAppInForeground(Context context) {
+        ActivityManager activityManager =
+                (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+        List<ActivityManager.RunningAppProcessInfo> appProcesses = activityManager.getRunningAppProcesses();
+        if (appProcesses == null) {
+            return false;
+        }
+        final String packageName = context.getPackageName();
+        for (ActivityManager.RunningAppProcessInfo appProcess : appProcesses) {
+            if (appProcess.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND &&
+                    appProcess.processName.equals(packageName)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

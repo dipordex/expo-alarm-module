@@ -91,11 +91,12 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
     }
     
     // Call this from AppDelegate or Notification Delegate
-    func emitAlarmTappedEvent(uid: String, title: String, timeString: String) {
+    func emitAlarmTappedEvent(uid: String, title: String, timeString: String, id: String) {
            sendEvent(withName: "onAlarmNotificationTapped", body: [
                "uid": uid,
                "title": title,
-               "time": timeString
+               "time": timeString,
+               "notificationId": id
            ])
        }
     
@@ -249,14 +250,14 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
         self.playSound(soundName, localPath: localPath, uuid: uidStr, volume: volumeLevel, vibrate: vibration) {
             DispatchQueue.main.async {
                 if #available(iOS 14.0, *) {
-                    completionHandler([.sound, .banner, .list])
+                    completionHandler([.list])
                 } else {
                     completionHandler(.alert)
                 }
             }
         }
         let timeString = userInfo["timeString"] as? String ?? ""
-        self.emitAlarmTappedEvent(uid: uidStr, title: title, timeString: timeString)
+        self.emitAlarmTappedEvent(uid: uidStr, title: title, timeString: timeString,id: notification.request.identifier)
     }
     
     @objc func applicationDidBecomeActive() {
@@ -356,7 +357,7 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
         default:
             os_log("SetInc_Log: ⚠️ Unknown action identifier: %{public}@", log: log, type: .error, response.actionIdentifier)
             let timeString = userInfo["timeString"] as? String ?? ""
-            self.emitAlarmTappedEvent(uid: uid, title: title, timeString: timeString)
+            self.emitAlarmTappedEvent(uid: uid, title: title, timeString: timeString, id: response.notification.request.identifier)
         }
         completionHandler()
     }

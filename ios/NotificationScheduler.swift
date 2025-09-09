@@ -177,7 +177,7 @@ class NotificationScheduler: NotificationSchedulerDelegate {
                 let request = UNNotificationRequest(identifier: requestID, content: notificationContent, trigger: trigger)
 
                 formatter.timeZone = TimeZone(identifier: alarm.timeZone)
-                self.startManualAlarmTrigger(at: fireDate, soundName: alarm.sound, localPath: localSoundFile, uid: alarm.uid)
+                self.startManualAlarmTrigger(at: fireDate, soundName: alarm.sound, localPath: localSoundFile, uid: alarm.uid, id: request.identifier)
 
                 UNUserNotificationCenter.current().add(request) { error in
                     if let e = error {
@@ -226,7 +226,7 @@ class NotificationScheduler: NotificationSchedulerDelegate {
         }
     }
 
-    func startManualAlarmTrigger(at date: Date, soundName: String, localPath: String?, uid: String) {
+    func startManualAlarmTrigger(at date: Date, soundName: String, localPath: String?, uid: String, id: String) {
         let timestamp = Int(date.timeIntervalSince1970)
         let pollingKey = "\(uid)_\(timestamp)"
 
@@ -257,7 +257,7 @@ class NotificationScheduler: NotificationSchedulerDelegate {
 
                     DispatchQueue.main.async {
                         os_log("SetInc_Log: ⏰ Polling triggered for alarm %{public}@ at %@", log: log, type: .error, pollingKey, now.description)
-                        self.playAlarmSound(soundName: soundName, localPath: localPath, uid: uid)
+                        self.playAlarmSound(soundName: soundName, localPath: localPath, uid: uid, date: date, id: id)
                         self.stopPolling(for: pollingKey)
                     }
                     break
@@ -274,11 +274,15 @@ class NotificationScheduler: NotificationSchedulerDelegate {
         }
     }
 
-    func playAlarmSound(soundName: String, localPath: String?, uid: String) {
+    func playAlarmSound(soundName: String, localPath: String?, uid: String, date: Date, id: String) {
         os_log("SetInc_Log: 🔊 Playing alarm sound for UID: %{public}@", log: log, type: .error, uid)
-        let volumeLevel = Store.shared.alarms.getAlarm(ByUUIDStr: uid)?.volumeLevel ?? 1.0
-        let vibration = Store.shared.alarms.getAlarm(ByUUIDStr: uid)?.vibration ?? true
-        ExpoAlarmModule.shared.playSound(soundName, localPath: localPath, uuid: uid, volume: volumeLevel, vibrate: vibration) {
+        let alarm =  Store.shared.alarms.getAlarm(ByUUIDStr: uid)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        if let tz = TimeZone(identifier: alarm?.timeZone ?? "UTC") { formatter.timeZone = tz }
+        let timeString = formatter.string(from: date)
+        ExpoAlarmModule.shared.emitAlarmTappedEvent(uid: uid, title: alarm?.description ?? "Alarm", timeString: timeString, id: id)
+        ExpoAlarmModule.shared.playSound(soundName, localPath: localPath, uuid: uid, volume: alarm?.volumeLevel ?? 1.0, vibrate: alarm?.vibration ?? true) {
             os_log("SetInc_Log: ✅ Play sound completed for UID: %{public}@", log: self.log, type: .error, uid)
         }
     }
@@ -318,7 +322,7 @@ class NotificationScheduler: NotificationSchedulerDelegate {
                 let localPath = request.content.userInfo["localSoundPath"] as? String
                 let soundName = request.content.userInfo["soundName"] as? String ?? "default"
                 DispatchQueue.main.async {
-                    self.startManualAlarmTrigger(at: fireDate, soundName: soundName, localPath: localPath, uid: uid)
+                    self.startManualAlarmTrigger(at: fireDate, soundName: soundName, localPath: localPath, uid: uid, id: id)
                 }
             }
         }
@@ -443,7 +447,7 @@ class NotificationScheduler: NotificationSchedulerDelegate {
               at: correctedDate,
               soundName: ringtoneName,
               localPath: localSoundFile,
-              uid: uid
+              uid: uid, id: request.identifier
           )
           
           UNUserNotificationCenter.current().add(request) { error in

@@ -64,7 +64,7 @@ public class AlarmService extends Service {
             return START_NOT_STICKY;
         }
         Log.d(TAG, "onStartCommand: Demo Test hh:MM" + alarm.hour + ":" + alarm.minutes);
-        ExpoAlarmModuleModule.triggerNotificationTapped(alarmUid,alarm.description,Helper.getTimeInZone(alarm.date.toString(), alarm.timeZone));
+        ExpoAlarmModuleModule.triggerNotificationTapped(alarmUid,alarm.description,Helper.getTimeInZone(alarm.date.toString(), alarm.timeZone), Integer.toString(notificationId));
         Manager.start(getApplicationContext(), alarmUid);
         startForeground(notificationId, notification);
         Log.d(TAG, "Foreground service started with notification ID: " + notificationId);

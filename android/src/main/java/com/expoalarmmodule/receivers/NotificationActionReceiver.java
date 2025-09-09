@@ -44,7 +44,8 @@ public class NotificationActionReceiver extends BroadcastReceiver {
                 // Send event to JS
                 ExpoAlarmModuleModule.triggerNotificationTapped(
                         alarmUid,
-                        title,time
+                        title,time,
+                        Integer.toString(notificationId)
                 );
 
                 // Optionally remove the notification
