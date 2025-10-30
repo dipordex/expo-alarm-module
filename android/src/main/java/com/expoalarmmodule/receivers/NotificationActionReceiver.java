@@ -91,7 +91,7 @@ public class NotificationActionReceiver extends BroadcastReceiver {
         }
     }
 
-    private void removeNotification(Context context, int notificationId) {
+     public static void removeNotification(Context context, int notificationId) {
         Intent serviceIntentSnooze = new Intent(context, AlarmService.class);
         context.stopService(serviceIntentSnooze);
         if (notificationId != -1) {

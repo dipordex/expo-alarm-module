@@ -90,6 +90,21 @@ public class ExpoAlarmModuleModule extends ReactContextBaseJavaModule {
                 .emit("onAlarmDismissTapped", params);
     }
 
+    public static void triggerNotificationMissed(String uid, String title) {
+        if (reactContextStatic == null) {
+            Log.e(NAME, "ReactApplicationContext is null! Cannot emit event.");
+            return;
+        }
+
+        WritableMap params = new WritableNativeMap();
+        params.putString("uid", uid);
+        params.putString("title", title);
+        Log.e("missing event", "it is trigged");
+        reactContextStatic
+                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("onAlarmMissed", params);
+    }
+
     @Override
     @NonNull
     public String getName() {

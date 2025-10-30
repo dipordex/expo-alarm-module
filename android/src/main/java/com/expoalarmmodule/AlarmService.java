@@ -4,8 +4,12 @@ package com.expoalarmmodule;
 import android.app.Notification;
 import android.app.Service;
 import android.content.Intent;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.Log;
+
+import com.expoalarmmodule.receivers.NotificationActionReceiver;
 
 public class AlarmService extends Service {
 
@@ -38,6 +42,7 @@ public class AlarmService extends Service {
         }
 
         String alarmUid = intent.getStringExtra("ALARM_UID");
+
         int notificationId = intent.getIntExtra("NOTIFICATION_ID", -1);
 
            if (Manager.getActiveAlarm() != null) {
@@ -68,6 +73,18 @@ public class AlarmService extends Service {
         Manager.start(getApplicationContext(), alarmUid);
         startForeground(notificationId, notification);
         Log.d(TAG, "Foreground service started with notification ID: " + notificationId);
+
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            String active = Manager.getActiveAlarm();
+            if (active != null && active.equals(alarmUid)) {
+                Log.w(TAG, "⏰ Alarm missed after 60 seconds: " + alarmUid);
+                ExpoAlarmModuleModule.triggerNotificationMissed(alarmUid, alarm.description);
+
+                NotificationActionReceiver.removeNotification(getApplicationContext(), notificationId);
+                Manager.stop(getApplicationContext());
+                stopSelf();
+            }
+        }, 60_000);
 
         return START_STICKY;
     }

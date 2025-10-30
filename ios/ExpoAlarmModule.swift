@@ -21,6 +21,8 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
         return instance
     }
     
+    var alarmMissTimeout: TimeInterval = 60
+    
     
     private let notificationScheduler: NotificationSchedulerDelegate = NotificationScheduler()
     private let manager: Manager = Manager()
@@ -87,18 +89,18 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
     
     @objc
     override func supportedEvents() -> [String]! {
-        return ["onAlarmNotificationTapped", "onAlarmSnoozeTapped", "onAlarmDismissTapped"]
+        return ["onAlarmNotificationTapped", "onAlarmSnoozeTapped", "onAlarmDismissTapped", "onAlarmMissed"]
     }
     
     // Call this from AppDelegate or Notification Delegate
     func emitAlarmTappedEvent(uid: String, title: String, timeString: String, id: String) {
-           sendEvent(withName: "onAlarmNotificationTapped", body: [
-               "uid": uid,
-               "title": title,
-               "time": timeString,
-               "notificationId": id
-           ])
-       }
+        sendEvent(withName: "onAlarmNotificationTapped", body: [
+            "uid": uid,
+            "title": title,
+            "time": timeString,
+            "notificationId": id
+        ])
+    }
     
     func emitAlarmSnoozeTappedEvent(uid: String) {
         sendEvent(withName: "onAlarmSnoozeTapped", body: [
@@ -111,6 +113,14 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
             "uid": uid,
         ])
     }
+    
+    func emitAlarmMissedEvent(uid: String, title: String) {
+        sendEvent(withName: "onAlarmMissed", body: [
+            "uid": uid,
+            "title": title,
+        ])
+    }
+    
     
     @objc(multiply:withB:withResolver:withRejecter:)
     func multiply(a: Float, b: Float, resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
@@ -403,6 +413,13 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
                     ExpoAlarmModule.audioPlayer?.play()
                     print("✅ Playing fallback bundled sound: \(fallbackName).mp3")
                     manager.setCurrentPlayingAlarm(uuid)
+                    
+                    // Add a timer to stop the alarm
+                    Timer.scheduledTimer(withTimeInterval: self.alarmMissTimeout, repeats: false) { [weak self] _ in
+                        self?.stop()
+                        self?.emitAlarmMissedEvent(uid: uuid, title: alarm?.description ?? "Unknown Alarm")
+                        os_log("SetInc_Log: ⏰ Alarm stopped automatically after 2 minutes for UID: %{public}@", log: self?.log ?? OSLog.default, type: .info, uuid)
+                    }
                 } catch {
                     os_log("SetInc_Log: ❌ AVAudioPlayer fallback error: %{public}@", log: log, type: .error, error.localizedDescription)
                 }
@@ -422,6 +439,12 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
                 ExpoAlarmModule.audioPlayer?.play()
                 print("✅ Playing sound from: \(url.path)")
                 manager.setCurrentPlayingAlarm(uuid)
+                // Add a timer to stop the alarm
+                Timer.scheduledTimer(withTimeInterval: self.alarmMissTimeout, repeats: false) { [weak self] _ in
+                    self?.stop()
+                    self?.emitAlarmMissedEvent(uid: uuid,title: alarm?.description ?? "Unknown Alarm")
+                    os_log("SetInc_Log: ⏰ Alarm stopped automatically after 2 minutes for UID: %{public}@", log: self?.log ?? OSLog.default, type: .info, uuid)
+                }
             } catch {
                 os_log("SetInc_Log: ❌ AVAudioPlayer error: %{public}@", log: log, type: .error, error.localizedDescription)
                 if active {
