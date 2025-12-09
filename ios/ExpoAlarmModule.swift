@@ -415,11 +415,21 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
                     manager.setCurrentPlayingAlarm(uuid)
                     
                     // Add a timer to stop the alarm
-                    Timer.scheduledTimer(withTimeInterval: self.alarmMissTimeout, repeats: false) { [weak self] _ in
-                        self?.stop()
-                        self?.emitAlarmMissedEvent(uid: uuid, title: alarm?.description ?? "Unknown Alarm")
-                        os_log("SetInc_Log: ⏰ Alarm stopped automatically after 2 minutes for UID: %{public}@", log: self?.log ?? OSLog.default, type: .info, uuid)
+                      Timer.scheduledTimer(withTimeInterval: alarmMissTimeout, repeats: false) { [weak self] _ in
+                    guard let self = self else { return }
+                    self.stop()
+                    guard let alarm = self.manager.getAlarm(uuid) else {
+                        print("No alarm found, not firing missed event")
+                        return
                     }
+                    guard alarm.active == true else {
+                        print("Alarm is not active, not firing missed event")
+                        return
+                    }
+                    self.emitAlarmMissedEvent(uid: uuid, title: alarm.description)
+                    os_log("SetInc_Log: ⏰ Alarm stopped automatically after %d seconds for UID: %{public}@",
+                           log: self.log, type: .info, Int(self.alarmMissTimeout),uuid)
+                }
                 } catch {
                     os_log("SetInc_Log: ❌ AVAudioPlayer fallback error: %{public}@", log: log, type: .error, error.localizedDescription)
                 }
@@ -440,10 +450,20 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
                 print("✅ Playing sound from: \(url.path)")
                 manager.setCurrentPlayingAlarm(uuid)
                 // Add a timer to stop the alarm
-                Timer.scheduledTimer(withTimeInterval: self.alarmMissTimeout, repeats: false) { [weak self] _ in
-                    self?.stop()
-                    self?.emitAlarmMissedEvent(uid: uuid,title: alarm?.description ?? "Unknown Alarm")
-                    os_log("SetInc_Log: ⏰ Alarm stopped automatically after 2 minutes for UID: %{public}@", log: self?.log ?? OSLog.default, type: .info, uuid)
+                 Timer.scheduledTimer(withTimeInterval: alarmMissTimeout, repeats: false) { [weak self] _ in
+                    guard let self = self else { return }
+                    self.stop()
+                    guard let alarm = self.manager.getAlarm(uuid) else {
+                        print("No alarm found, not firing missed event")
+                        return
+                    }
+                    guard alarm.active == true else {
+                        print("Alarm is not active, not firing missed event")
+                        return
+                    }
+                    self.emitAlarmMissedEvent(uid: uuid, title: alarm.description)
+                    os_log("SetInc_Log: ⏰ Alarm stopped automatically after %d seconds for UID: %{public}@",
+                           log: self.log, type: .info, Int(self.alarmMissTimeout),uuid)
                 }
             } catch {
                 os_log("SetInc_Log: ❌ AVAudioPlayer error: %{public}@", log: log, type: .error, error.localizedDescription)
