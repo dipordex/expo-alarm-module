@@ -89,7 +89,7 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
     
     @objc
     override func supportedEvents() -> [String]! {
-        return ["onAlarmNotificationTapped", "onAlarmSnoozeTapped", "onAlarmDismissTapped", "onAlarmMissed"]
+        return ["onAlarmNotificationTapped", "onAlarmSnoozeTapped", "onAlarmDismissTapped", "onAlarmMissed", "onNotificationTapped"]
     }
     
     // Call this from AppDelegate or Notification Delegate
@@ -118,6 +118,12 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
         sendEvent(withName: "onAlarmMissed", body: [
             "uid": uid,
             "title": title,
+        ])
+    }
+    
+    func emitNotificationTappedEvent(userInfo: [AnyHashable : Any]) {
+        sendEvent(withName: "onNotificationTapped", body: [
+            "userInfo": userInfo
         ])
     }
     
@@ -236,7 +242,7 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         let userInfo = notification.request.content.userInfo
-        print("🔔 willPresent triggered for notification: \(notification.request.identifier)")
+        print("🔔 willPresent triggered for notification: \(userInfo)")
         
         guard
             let title = userInfo["title"] as? String,
@@ -343,7 +349,7 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
-        print("📲 [didReceive] Notification: \(response.notification.request.identifier)", userInfo)
+        print("📲 [didReceive] Notification: \(response.notification) \(response.notification.request)", userInfo)
         guard
             let title = userInfo["title"] as? String,
             let soundName = userInfo["soundName"] as? String,
@@ -352,6 +358,7 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
         else {
             os_log("SetInc_Log: ❌ Missing soundName or uid in userInfo", log: log, type: .error)
             completionHandler()
+            emitNotificationTappedEvent(userInfo: userInfo)
             return
         }
         
