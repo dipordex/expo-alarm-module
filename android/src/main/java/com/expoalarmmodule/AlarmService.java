@@ -41,6 +41,7 @@ public class AlarmService extends Service {
     @Override
     public int onStartCommand(final Intent intent, final int flags, final int startId) {
         Log.d(TAG, "onStartCommand called with intent: " + (intent != null ? intent.getExtras() : "null"));
+
         if (intent == null) {
             Log.e(TAG, "Intent is null, cannot proceed");
             return START_NOT_STICKY;
@@ -48,9 +49,44 @@ public class AlarmService extends Service {
 
         String alarmUid = intent.getStringExtra("ALARM_UID");
         int notificationId = intent.getIntExtra("NOTIFICATION_ID", -1);
+        boolean vibrateOnly = intent.getBooleanExtra("VIBRATE_ONLY", false);
+
+        /**
+         * ==================================================
+         * 🚨 FOREGROUND SERVICE REQUIREMENT (MANDATORY)
+         * ==================================================
+         * startForeground() MUST be called on ALL code paths
+         * ==================================================
+         */
+        Notification foregroundNotification;
+
+        if (vibrateOnly) {
+            // Minimal notification for vibration-only mode
+            foregroundNotification = Helper.getForegroundServiceNotification(this);
+            startForeground(1, foregroundNotification);
+
+            Log.d(TAG, "Started foreground service for vibrate-only mode");
+
+            Manager.vibrate(this, 10_000);
+
+            // Stop service after vibration
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                stopForeground(true);
+                stopSelf();
+            }, 10_000);
+
+            return START_NOT_STICKY;
+        }
+
+        /**
+         * ==================================================
+         * 🔁 REGULAR ALARM FLOW (UNCHANGED)
+         * ==================================================
+         */
 
         if (Manager.getActiveAlarm() != null) {
-            Log.w(TAG, "⚠️ Alarm " + alarmUid + " ignored because alarm " + Manager.getActiveAlarm() + " is already active");
+            Log.w(TAG, "⚠️ Alarm " + alarmUid + " ignored because alarm "
+                    + Manager.getActiveAlarm() + " is already active");
             return START_NOT_STICKY;
         }
 
@@ -60,6 +96,7 @@ public class AlarmService extends Service {
         }
 
         Log.d(TAG, "Received ALARM_UID: " + alarmUid + ", NOTIFICATION_ID: " + notificationId);
+
         Alarm alarm = Storage.getAlarm(getApplicationContext(), alarmUid);
         if (alarm == null) {
             Log.e(TAG, "No alarm found for UID: " + alarmUid);
@@ -67,29 +104,33 @@ public class AlarmService extends Service {
         }
 
         Log.d(TAG, "Alarm retrieved: " + Alarm.toJson(alarm));
+
         Notification notification = Helper.getAlarmNotification(this, alarm, notificationId);
         if (notification == null) {
             Log.e(TAG, "Failed to create notification for alarm");
             return START_NOT_STICKY;
         }
 
-        // Cancel any previously running missed alarm timer before starting a new one
+        // Cancel any previously running missed alarm timer
         cancelMissedAlarmTimer();
 
-        Log.d(TAG, "onStartCommand: Demo Test hh:MM " + alarm.hour + ":" + alarm.minutes);
         ExpoAlarmModuleModule.triggerNotificationTapped(
                 alarmUid,
                 alarm.description,
-                Helper.getTimeInZone(alarm.date != null ? alarm.date.toString() : null, alarm.timeZone),
+                Helper.getTimeInZone(
+                        alarm.date != null ? alarm.date.toString() : null,
+                        alarm.timeZone
+                ),
                 Integer.toString(notificationId)
         );
 
         Manager.start(getApplicationContext(), alarmUid);
+
+        // ✅ REQUIRED for foreground service
         startForeground(notificationId, notification);
 
         Log.d(TAG, "Foreground service started with notification ID: " + notificationId);
 
-        // Capture finals for use inside Runnable
         final String finalAlarmUid = alarmUid;
         final int finalNotificationId = notificationId;
 
@@ -106,7 +147,6 @@ public class AlarmService extends Service {
                 stopSelf();
             }
 
-            // Clean up references after execution
             missedAlarmRunnable = null;
             mainHandler = null;
         };

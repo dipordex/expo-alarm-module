@@ -7,6 +7,8 @@ import android.content.Intent;
 import android.util.Log;
 import com.expoalarmmodule.Alarm;
 import com.expoalarmmodule.AlarmService;
+import com.expoalarmmodule.ExpoAlarmModuleModule;
+import com.expoalarmmodule.Helper;
 import com.expoalarmmodule.Storage;
 
 public class AlarmReceiver extends BroadcastReceiver {
@@ -27,6 +29,17 @@ public class AlarmReceiver extends BroadcastReceiver {
         Alarm alarm = Storage.getAlarm(context, alarmUid);
         if (alarm == null) {
             Log.e(TAG, "No alarm found for UID: " + alarmUid);
+            return;
+        }
+
+        if (alarm.isTaskAlarm) {
+            Log.d(TAG, "Task alarm triggered: " + alarmUid);
+            // Emit custom JS event
+//            ExpoAlarmModuleModule.triggerTaskAlarm(alarm.uid);
+            Intent serviceIntent = new Intent(context, AlarmService.class);
+            serviceIntent.putExtra("ALARM_UID", alarmUid);
+            serviceIntent.putExtra("VIBRATE_ONLY", true);
+            context.startForegroundService(serviceIntent);
             return;
         }
 

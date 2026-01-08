@@ -1,6 +1,11 @@
 package com.expoalarmmodule;
 
 import android.content.Context;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.util.Log;
 import java.util.Date;
 import java.util.Objects;
@@ -243,4 +248,24 @@ public class Manager {
             activeAlarmUid = null;
         }
     }
+    public static void vibrate(Context context, long durationMs) {
+        Vibrator vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
+
+        if (vibrator == null || !vibrator.hasVibrator()) {
+            return;
+        }
+        long[] pattern = {0, 200, 150, 200, 150};
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(
+                    VibrationEffect.createWaveform(pattern, 0) // repeat from index 0
+            );
+        } else {
+            vibrator.vibrate(pattern, 0);
+        }
+        // Stop vibration after durationMs (e.g., 10 seconds)
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            vibrator.cancel();
+        }, durationMs);
+    }
+
 }

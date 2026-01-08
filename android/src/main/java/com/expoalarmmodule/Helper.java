@@ -373,4 +373,19 @@ public class Helper {
         }
         return false;
     }
+
+    public static Notification getForegroundServiceNotification(Context context) {
+        Resources res = context.getResources();
+        String packageName = context.getPackageName();
+        int smallIconResId = res.getIdentifier("ic_launcher", "mipmap", packageName);
+
+        return new NotificationCompat.Builder(context, "NotificationsChannelId")
+                .setSmallIcon(smallIconResId)
+                .setContentTitle("Task Alarm")
+                .setContentText("Task Start Reminder Alarm")
+                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setOngoing(true)
+                .build();
+    }
 }

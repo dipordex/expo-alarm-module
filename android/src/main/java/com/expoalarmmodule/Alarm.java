@@ -23,13 +23,13 @@ import static com.expoalarmmodule.GsonUtil.createSerialize;
 
 public class Alarm implements Cloneable {
 
-    String uid;
+    public String uid;
     ZonedDateTime date;
     String dateString;
     ArrayList<Integer> days;
     int hour;
     int minutes;
-    String title;
+    public String title;
     String description;
     boolean repeating;
     boolean active;
@@ -43,8 +43,9 @@ public class Alarm implements Cloneable {
     String timeZone;
     boolean vibration;
     int volumeLevel;
+    public boolean isTaskAlarm;
 
-    Alarm(String uid, ArrayList<Integer> days, ZonedDateTime date, int hour, int minutes, boolean showDismiss, boolean showSnooze, int snoozeInterval, String title, String description, boolean repeating, boolean active, String dismissText, String snoozeText, String sound, String timeZone, boolean vibration, int volumeLevel ) {
+    Alarm(String uid, ArrayList<Integer> days, ZonedDateTime date, int hour, int minutes, boolean showDismiss, boolean showSnooze, int snoozeInterval, String title, String description, boolean repeating, boolean active, String dismissText, String snoozeText, String sound, String timeZone, boolean vibration, int volumeLevel, boolean isTaskAlarm ) {
         this.uid = uid;
         this.days = days != null ? days : new ArrayList<>();
         this.hour = hour;
@@ -65,7 +66,7 @@ public class Alarm implements Cloneable {
         this.timeZone = timeZone;
         this.volumeLevel = volumeLevel;
         this.vibration = vibration;
-
+        this.isTaskAlarm = isTaskAlarm;
     }
 
     List<Date> getDates() {
@@ -176,8 +177,9 @@ public class Alarm implements Cloneable {
                 + ", snoozeText: " + alarm.snoozeText
                 + ", sound: " + alarm.sound
                 + ", date: " + (alarm.date != null ? alarm.date.toString() : "null")
-                + ", days: " + alarm.days.toString());
-
+                + ", days: " + alarm.days.toString()
+                + ", isTaskAlarm: " + alarm.isTaskAlarm
+        );
         return json;
     }
 
@@ -206,7 +208,8 @@ public class Alarm implements Cloneable {
                         this.days.equals(alarm.days) &&
                         this.title.equals(alarm.title) &&
                         this.description.equals(alarm.description) &&
-                        this.sound.equals(alarm.sound)
+                        this.sound.equals(alarm.sound) &&
+                        this.isTaskAlarm == alarm.isTaskAlarm
         );
     }
 }

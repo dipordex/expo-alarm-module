@@ -219,7 +219,7 @@ public class ExpoAlarmModuleModule extends ReactContextBaseJavaModule {
         String timeZone = alarm.hasKey("timeZone") ? alarm.getString("timeZone") : "Asia/Kolkata";
         int volumeLevel = alarm.hasKey("volumeLevel") ? alarm.getInt("volumeLevel") : 100;
         boolean vibration = alarm.hasKey("vibration") ? alarm.getBoolean("vibration") : true;
-
+        boolean isTaskAlarm = alarm.hasKey("isTaskAlarm") ? alarm.getBoolean("isTaskAlarm") : false;
         ArrayList<Integer> days = new ArrayList<>();
         ZonedDateTime date = null;
 
@@ -292,7 +292,8 @@ public class ExpoAlarmModuleModule extends ReactContextBaseJavaModule {
                 sound,
                 timeZone,
                 vibration,
-                volumeLevel
+                volumeLevel,
+                isTaskAlarm
 
         );
 
@@ -315,6 +316,7 @@ public class ExpoAlarmModuleModule extends ReactContextBaseJavaModule {
         map.putString("dismissText", alarm.dismissText);
         map.putString("snoozeText", alarm.snoozeText);
         map.putString("sound", alarm.sound);
+        map.putBoolean("isTaskAlarm", alarm.isTaskAlarm);
 
         if (alarm.date != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             map.putString("day", alarm.date.toString());
@@ -339,4 +341,17 @@ public class ExpoAlarmModuleModule extends ReactContextBaseJavaModule {
         for (Alarm alarm : a) array.pushMap(serializeAlarmObject(alarm));
         return array;
     }
+
+    public static void triggerTaskAlarm(String uid) {
+        if (reactContextStatic == null) {
+            Log.e(NAME, "ReactApplicationContext is null! Cannot emit task alarm.");
+            return;
+        }
+        WritableMap params = new WritableNativeMap();
+        params.putString("uid", uid);
+        reactContextStatic
+                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("onTaskAlarm", params);
+    }
+
 }
