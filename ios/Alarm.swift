@@ -13,13 +13,14 @@ class Alarm: Codable {
     var vibration: Bool = false
     var volumeLevel: Float = 1.0
     var timeZone: String = "Local Time"
+    var isTaskAlarm: Bool = false
     
     
     convenience init() {
-        self.init(uid: "", date: Date(), active: true, showSnooze: false, snoozeInterval: 5, title: "Alarm", description: "", vibration: true, volumeLevel: 1.0, timeZone: "Local Time")
+        self.init(uid: "", date: Date(), active: true, showSnooze: false, snoozeInterval: 5, title: "Alarm", description: "", vibration: true, volumeLevel: 1.0, timeZone: "Local Time", isTaskAlarm: false)
     }
     
-    init(uid: String, date: Date, active: Bool, showSnooze: Bool, snoozeInterval: Int, title: String, description: String, sound: String = "bell", days: [Int]? = nil, vibration: Bool, volumeLevel: Float, timeZone: String) {
+    init(uid: String, date: Date, active: Bool, showSnooze: Bool, snoozeInterval: Int, title: String, description: String, sound: String = "bell", days: [Int]? = nil, vibration: Bool, volumeLevel: Float, timeZone: String, isTaskAlarm: Bool) {
         self.uid = uid
         self.date = date
         self.active = active
@@ -32,6 +33,7 @@ class Alarm: Codable {
         self.vibration = vibration
         self.volumeLevel = volumeLevel
         self.timeZone = timeZone
+        self.isTaskAlarm = isTaskAlarm
     }
     
     init(dictionary: NSMutableDictionary) {
@@ -74,7 +76,7 @@ class Alarm: Codable {
             print("⚠️ Missing or invalid timeZone in dictionary")
             self.timeZone = "Local Time"
         }
-        
+        self.isTaskAlarm = dictionary["isTaskAlarm"] as? Bool ?? false
         
         
         print("\u{1F4E5} Alarm initialized from dictionary:")
@@ -89,6 +91,7 @@ class Alarm: Codable {
         print("  • vibration: \(vibration)")
         print("  • volumeLevel: \(volumeLevel)")
         print("  • timeZone: \(timeZone)")
+        print("  • isTaskAlarm: \(isTaskAlarm)")
         
     }
     
@@ -104,6 +107,7 @@ class Alarm: Codable {
         case vibration
         case volumeLevel
         case timeZone
+        case isTaskAlarm
     }
     
     required init(from decoder: Decoder) throws {
@@ -121,6 +125,7 @@ class Alarm: Codable {
         self.vibration = try container.decodeIfPresent(Bool.self, forKey: Alarm.CodingKeys.vibration) ?? false
         self.volumeLevel = try container.decodeIfPresent(Float.self, forKey: Alarm.CodingKeys.volumeLevel) ?? 1.0
         self.timeZone = try container.decodeIfPresent(String.self, forKey: Alarm.CodingKeys.timeZone) ?? "Local Time"
+        self.isTaskAlarm = try container.decodeIfPresent(Bool.self, forKey: Alarm.CodingKeys.isTaskAlarm) ?? false
         
     }
     
@@ -138,6 +143,7 @@ class Alarm: Codable {
         try container.encode(self.vibration, forKey: Alarm.CodingKeys.vibration)
         try container.encode(self.volumeLevel, forKey: Alarm.CodingKeys.volumeLevel)
         try container.encode(self.timeZone, forKey: Alarm.CodingKeys.timeZone)
+        try container.encode(self.isTaskAlarm, forKey: Alarm.CodingKeys.isTaskAlarm)
         
     }
     
@@ -158,7 +164,8 @@ class Alarm: Codable {
             "days": alarm.days as Any,
             "vibration": alarm.vibration,
             "volumeLevel": alarm.volumeLevel,
-            "timeZone": alarm.timeZone
+            "timeZone": alarm.timeZone,
+            "isTaskAlarm": alarm.isTaskAlarm
         ]
         
         return alarmDictionary;

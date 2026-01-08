@@ -19,6 +19,7 @@ class Alarm {
   timeZone?: string;
   volumeLevel?: number;
   vibration?: boolean;
+  isTaskAlarm?: boolean;
 
   constructor(params: any = null) {
     this.uid = getParam(params, 'uid');
@@ -39,6 +40,7 @@ class Alarm {
     this.timeZone    = getParam(params, 'timeZone')    ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
     this.volumeLevel = getParam(params, 'volumeLevel') ?? 1.0;
     this.vibration   = getParam(params, 'vibration')   ?? true;
+    this.isTaskAlarm = getParam(params, 'isTaskAlarm') ?? false;
   }
 
   static getEmpty() {
@@ -53,6 +55,7 @@ class Alarm {
        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       volumeLevel: 1.0,
       vibration: true,
+      isTaskAlarm: false
     });
   }
 
@@ -64,6 +67,7 @@ class Alarm {
       timeZone: this.timeZone,
       volumeLevel: this.volumeLevel,
       vibration: this.vibration,
+      isTaskAlarm: this.isTaskAlarm
     };
   }
 

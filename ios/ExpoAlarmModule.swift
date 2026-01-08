@@ -89,7 +89,7 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
     
     @objc
     override func supportedEvents() -> [String]! {
-        return ["onAlarmNotificationTapped", "onAlarmSnoozeTapped", "onAlarmDismissTapped", "onAlarmMissed", "onNotificationTapped"]
+        return ["onAlarmNotificationTapped", "onAlarmSnoozeTapped", "onAlarmDismissTapped", "onAlarmMissed", "onNotificationTapped", "onTaskAlarm"]
     }
     
     // Call this from AppDelegate or Notification Delegate
@@ -124,6 +124,11 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
     func emitNotificationTappedEvent(userInfo: [AnyHashable : Any]) {
         sendEvent(withName: "onNotificationTapped", body: [
             "userInfo": userInfo
+        ])
+    }
+    func emitTaskAlarmEvent(uid: String) {
+        sendEvent(withName: "onTaskAlarm", body: [
+                "uid": uid,
         ])
     }
     
@@ -263,17 +268,22 @@ final class ExpoAlarmModule: RCTEventEmitter, UNUserNotificationCenterDelegate, 
         let localPath = userInfo["localSoundPath"] as? String
         let volumeLevel = userInfo["volumeLevel"] as? Float ?? 1.0
         let vibration = userInfo["vibration"] as? Bool ?? true
-        self.playSound(soundName, localPath: localPath, uuid: uidStr, volume: volumeLevel, vibrate: vibration) {
-            DispatchQueue.main.async {
-                if #available(iOS 14.0, *) {
-                    completionHandler([.list])
-                } else {
-                    completionHandler(.alert)
+        let isTaskAlarm = userInfo["isTaskAlarm"] as? Bool ?? false
+        if isTaskAlarm {
+            emitTaskAlarmEvent(uid: uidStr)
+        } else {
+            self.playSound(soundName, localPath: localPath, uuid: uidStr, volume: volumeLevel, vibrate: vibration) {
+                DispatchQueue.main.async {
+                    if #available(iOS 14.0, *) {
+                        completionHandler([.list])
+                    } else {
+                        completionHandler(.alert)
+                    }
                 }
             }
+            let timeString = userInfo["timeString"] as? String ?? ""
+            self.emitAlarmTappedEvent(uid: uidStr, title: title, timeString: timeString,id: notification.request.identifier)
         }
-        let timeString = userInfo["timeString"] as? String ?? ""
-        self.emitAlarmTappedEvent(uid: uidStr, title: title, timeString: timeString,id: notification.request.identifier)
     }
     
     @objc func applicationDidBecomeActive() {
